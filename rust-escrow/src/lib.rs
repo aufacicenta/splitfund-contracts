@@ -40,7 +40,7 @@ impl Escrow {
         log!(
             "{} deposited {} NEAR tokens. New balance {}",
             payee,
-            current_balance,
+            amount,
             new_balance
         );
         // @TODO emit deposit event
@@ -50,8 +50,17 @@ impl Escrow {
     pub fn withdraw(&mut self) {
         let payee = env::signer_account_id();
         let payment = self.deposits_of(payee.to_string());
+
         self.deposits.insert(&payee, &0);
+
         Promise::new(payee.to_string()).transfer(payment);
+
+        log!(
+            "{} withdrawn {} NEAR tokens. New balance {}",
+            payee,
+            payment,
+            self.deposits_of(payee.to_string())
+        );
         // @TODO emit withdraw event
     }
 }
