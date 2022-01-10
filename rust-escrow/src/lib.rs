@@ -1,6 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
-use near_sdk::{env, near_bindgen};
+use near_sdk::{env, log, near_bindgen};
 use near_sdk::{AccountId, Balance, Promise};
 
 near_sdk::setup_alloc!();
@@ -29,15 +29,26 @@ impl Escrow {
     }
 
     #[payable]
-    pub fn deposit(&mut self, payee: &AccountId) {
+    pub fn deposit(&mut self) {
         let amount = env::attached_deposit();
+        let payee = env::signer_account_id();
         let current_balance = self.deposits_of(payee.to_string());
-        self.deposits.insert(&payee, &(&current_balance + &amount));
+        let new_balance = &(&current_balance + &amount);
+
+        self.deposits.insert(&payee, new_balance);
+
+        log!(
+            "{} deposited {} NEAR tokens. New balance {}",
+            payee,
+            current_balance,
+            new_balance
+        );
         // @TODO emit deposit event
     }
 
     #[payable]
-    pub fn withdraw(&mut self, payee: &AccountId) {
+    pub fn withdraw(&mut self) {
+        let payee = env::signer_account_id();
         let payment = self.deposits_of(payee.to_string());
         self.deposits.insert(&payee, &0);
         Promise::new(payee.to_string()).transfer(payment);
@@ -49,40 +60,70 @@ impl Escrow {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use near_sdk::test_utils::{accounts, VMContextBuilder};
+    use near_sdk::testing_env;
     use near_sdk::MockedBlockchain;
-    use near_sdk::{testing_env, VMContext};
 
-    fn get_context(input: Vec<u8>, is_view: bool) -> VMContext {
-        VMContext {
-            current_account_id: "alice_near".to_string(),
-            signer_account_id: "bob_near".to_string(),
-            signer_account_pk: vec![0, 1, 2],
-            predecessor_account_id: "carol_near".to_string(),
-            input,
-            block_index: 0,
-            block_timestamp: 0,
-            account_balance: 0,
-            account_locked_balance: 0,
-            storage_usage: 0,
-            attached_deposit: 0,
-            prepaid_gas: 10u64.pow(18),
-            random_seed: vec![0, 1, 2],
-            is_view,
-            output_data_receivers: vec![],
-            epoch_height: 0,
-        }
+    const ATTACHED_DEPOSIT: Balance = 8540000000000000000000;
+
+    fn setup_contract() -> (VMContextBuilder, Escrow) {
+        let mut context = VMContextBuilder::new();
+        testing_env!(context.predecessor_account_id(accounts(0)).build());
+        let contract = Escrow::default();
+        (context, contract)
     }
 
-    // Tests
     #[test]
-    fn deposits_of() {
-        let context = get_context(vec![], false);
-        testing_env!(context);
-        let contract = Escrow::default();
+    fn test_get_deposits_of() {
+        let (_context, contract) = setup_contract();
         assert_eq!(
             0,
-            contract.deposits_of("bob_near".to_string()),
-            "Account Balance should be 0"
+            contract.deposits_of(accounts(0).to_string()),
+            "Account deposits should be 0"
+        );
+    }
+
+    #[test]
+    fn test_deposit() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .signer_account_id(accounts(1))
+            .attached_deposit(ATTACHED_DEPOSIT)
+            .build());
+
+        contract.deposit();
+
+        assert_eq!(
+            ATTACHED_DEPOSIT,
+            contract.deposits_of(accounts(1).to_string()),
+            "Account deposits should equal ATTACHED_DEPOSIT"
+        );
+    }
+
+    #[test]
+    fn test_withdraw() {
+        let (mut context, mut contract) = setup_contract();
+
+        testing_env!(context
+            .signer_account_id(accounts(1))
+            .attached_deposit(ATTACHED_DEPOSIT)
+            .build());
+
+        contract.deposit();
+
+        assert_eq!(
+            ATTACHED_DEPOSIT,
+            contract.deposits_of(accounts(1).to_string()),
+            "Account deposits should equal ATTACHED_DEPOSIT"
+        );
+
+        contract.withdraw();
+
+        assert_eq!(
+            0,
+            contract.deposits_of(accounts(1).to_string()),
+            "Account deposits should equal 0"
         );
     }
 }
