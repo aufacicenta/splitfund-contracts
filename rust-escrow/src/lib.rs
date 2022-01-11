@@ -25,8 +25,8 @@ impl Escrow {
         }
     }
 
-    pub fn deposits_of(&self, payee: AccountId) -> Balance {
-        return match self.deposits.get(&payee) {
+    pub fn deposits_of(&self, payee: &AccountId) -> Balance {
+        return match self.deposits.get(payee) {
             Some(deposit) => deposit,
             None => 0,
         };
@@ -42,14 +42,14 @@ impl Escrow {
 
         let amount = env::attached_deposit();
         let payee = env::signer_account_id();
-        let current_balance = self.deposits_of(payee.clone());
+        let current_balance = self.deposits_of(&payee);
         let new_balance = &(&current_balance + &amount);
 
         self.deposits.insert(&payee, new_balance);
 
         log!(
             "{} deposited {} NEAR tokens. New balance {}",
-            payee,
+            &payee,
             amount,
             new_balance
         );
@@ -59,16 +59,16 @@ impl Escrow {
     #[payable]
     pub fn withdraw(&mut self) {
         let payee = env::signer_account_id();
-        let payment = self.deposits_of(payee.clone());
+        let payment = self.deposits_of(&payee);
 
         Promise::new(payee.clone()).transfer(payment);
         self.deposits.insert(&payee, &0);
 
         log!(
             "{} withdrawn {} NEAR tokens. New balance {}",
-            payee,
+            &payee,
             payment,
-            self.deposits_of(payee.clone())
+            self.deposits_of(&payee)
         );
         // @TODO emit withdraw event
     }
@@ -95,7 +95,7 @@ mod tests {
         let (_context, contract) = setup_contract();
         assert_eq!(
             0,
-            contract.deposits_of(alice()),
+            contract.deposits_of(&alice()),
             "Account deposits should be 0"
         );
     }
@@ -113,7 +113,7 @@ mod tests {
 
         assert_eq!(
             ATTACHED_DEPOSIT,
-            contract.deposits_of(bob()),
+            contract.deposits_of(&bob()),
             "Account deposits should equal ATTACHED_DEPOSIT"
         );
     }
@@ -144,7 +144,7 @@ mod tests {
 
         assert_eq!(
             ATTACHED_DEPOSIT,
-            contract.deposits_of(carol()),
+            contract.deposits_of(&carol()),
             "Account deposits should equal ATTACHED_DEPOSIT"
         );
 
@@ -152,7 +152,7 @@ mod tests {
 
         assert_eq!(
             0,
-            contract.deposits_of(carol()),
+            contract.deposits_of(&carol()),
             "Account deposits should equal 0"
         );
     }
