@@ -35,7 +35,7 @@ impl Escrow {
     #[payable]
     pub fn deposit(&mut self) {
         assert_ne!(
-            env::predecessor_account_id(),
+            env::current_account_id(),
             env::signer_account_id(),
             "The owner of the contract should not deposit"
         );
