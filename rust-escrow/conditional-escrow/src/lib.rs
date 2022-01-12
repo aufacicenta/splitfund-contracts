@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
 use near_sdk::{env, log, near_bindgen};
@@ -5,23 +6,29 @@ use near_sdk::{AccountId, Balance, Promise};
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
-pub struct Escrow {
+pub struct ConditionalEscrow {
     deposits: LookupMap<AccountId, Balance>,
+    expires_at: DateTime,
+    total_funds: Balance,
+    min_amount_threshold: U128,
 }
 
-impl Default for Escrow {
+impl Default for ConditionalEscrow {
     fn default() -> Self {
-        env::panic_str("Escrow should be initialized before usage")
+        env::panic_str("ConditionalEscrow should be initialized before usage")
     }
 }
 
 #[near_bindgen]
-impl Escrow {
+impl ConditionalEscrow {
     #[init]
-    pub fn new() -> Self {
+    pub fn new(expires_at: DateTime, min_amount_threshold: U128) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized");
         Self {
             deposits: LookupMap::new(b"r".to_vec()),
+            total_funds: 0,
+            expires_at,
+            min_amount_threshold,
         }
     }
 

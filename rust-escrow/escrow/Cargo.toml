@@ -1,5 +1,5 @@
 [package]
-name = "escrow-factory"
+name = "escrow"
 version = "0.1.3"
 edition = "2021"
 authors = ["netpoe <gus@aufacicenta.com>"]
