@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
 use near_sdk::{env, log, near_bindgen};
@@ -8,9 +8,9 @@ use near_sdk::{AccountId, Balance, Promise};
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct ConditionalEscrow {
     deposits: LookupMap<AccountId, Balance>,
-    expires_at: DateTime,
+    expires_at: i64,
     total_funds: Balance,
-    min_amount_threshold: U128,
+    min_funding_amount: u128,
 }
 
 impl Default for ConditionalEscrow {
@@ -22,13 +22,13 @@ impl Default for ConditionalEscrow {
 #[near_bindgen]
 impl ConditionalEscrow {
     #[init]
-    pub fn new(expires_at: DateTime, min_amount_threshold: U128) -> Self {
+    pub fn new(expires_at: i64, min_funding_amount: u128) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized");
         Self {
             deposits: LookupMap::new(b"r".to_vec()),
             total_funds: 0,
             expires_at,
-            min_amount_threshold,
+            min_funding_amount,
         }
     }
 
@@ -39,6 +39,18 @@ impl ConditionalEscrow {
         };
     }
 
+    pub fn get_total_funds(&self) -> Balance {
+        return self.total_funds;
+    }
+
+    pub fn is_deposit_allowed(&self) -> bool {
+        return !self.has_contract_expired();
+    }
+
+    pub fn is_withdrawal_allowed(&self) -> bool {
+        return self.has_contract_expired() && !self.is_funding_minimum_reached();
+    }
+
     #[payable]
     pub fn deposit(&mut self) {
         assert_ne!(
@@ -47,37 +59,88 @@ impl ConditionalEscrow {
             "The owner of the contract should not deposit"
         );
 
+        if !self.is_deposit_allowed() {
+            let dt =
+                DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(self.expires_at, 0), Utc)
+                    .format("%c");
+            let block_timestamp = DateTime::<Utc>::from_utc(
+                NaiveDateTime::from_timestamp(env::block_timestamp().try_into().unwrap(), 0),
+                Utc,
+            )
+            .format("%c");
+
+            log!("Deposit is only allowed before {}. Current total funds: {}. Current block timestamp: {}",
+                dt,
+                self.get_total_funds(),
+                block_timestamp
+            );
+
+            return;
+        };
+
         let amount = env::attached_deposit();
         let payee = env::signer_account_id();
         let current_balance = self.deposits_of(&payee);
         let new_balance = &(&current_balance + &amount);
 
         self.deposits.insert(&payee, new_balance);
+        self.total_funds += amount;
 
         log!(
-            "{} deposited {} NEAR tokens. New balance {}",
+            "{} deposited {} NEAR tokens. New balance {} — Total funds: {}",
             &payee,
             amount,
-            new_balance
+            new_balance,
+            self.total_funds
         );
         // @TODO emit deposit event
     }
 
     #[payable]
     pub fn withdraw(&mut self) {
+        if !self.is_withdrawal_allowed() {
+            let dt =
+                DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(self.expires_at, 0), Utc)
+                    .format("%c");
+            let block_timestamp = DateTime::<Utc>::from_utc(
+                NaiveDateTime::from_timestamp(env::block_timestamp().try_into().unwrap(), 0),
+                Utc,
+            )
+            .format("%c");
+
+            log!("Withdrawal is only allowed after {}, if the minimum of {} NEAR is not reached. Current total funds: {}. Current block timestamp: {}",
+                dt,
+                self.min_funding_amount,
+                self.get_total_funds(),
+                block_timestamp
+            );
+
+            return;
+        };
+
         let payee = env::signer_account_id();
         let payment = self.deposits_of(&payee);
 
         Promise::new(payee.clone()).transfer(payment);
         self.deposits.insert(&payee, &0);
+        self.total_funds -= payment;
 
         log!(
-            "{} withdrawn {} NEAR tokens. New balance {}",
+            "{} withdrawn {} NEAR tokens. New balance {} — Total funds: {}",
             &payee,
             payment,
-            self.deposits_of(&payee)
+            self.deposits_of(&payee),
+            self.total_funds
         );
         // @TODO emit withdraw event
+    }
+
+    fn has_contract_expired(&self) -> bool {
+        return self.expires_at < env::block_timestamp().try_into().unwrap();
+    }
+
+    fn is_funding_minimum_reached(&self) -> bool {
+        return self.total_funds >= self.min_funding_amount;
     }
 }
 
@@ -88,18 +151,31 @@ mod tests {
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::testing_env;
 
-    const ATTACHED_DEPOSIT: Balance = 8540000000000000000000;
+    const ATTACHED_DEPOSIT: Balance = 8_540_000_000_000_000_000_000;
+    const MIN_FUNDING_AMOUNT: u128 = 1_000_000_000_000_000_000_000_000;
 
-    fn setup_contract() -> (VMContextBuilder, Escrow) {
+    fn setup_context() -> VMContextBuilder {
         let mut context = VMContextBuilder::new();
-        testing_env!(context.predecessor_account_id(alice()).build());
-        let contract = Escrow::new();
-        (context, contract)
+        let now = Utc::now().timestamp_millis();
+        testing_env!(context
+            .predecessor_account_id(alice())
+            .block_timestamp(now.try_into().unwrap())
+            .build());
+        return context;
+    }
+
+    fn setup_contract(expires_at: i64, min_funding_amount: u128) -> ConditionalEscrow {
+        let contract = ConditionalEscrow::new(expires_at, min_funding_amount);
+        return contract;
     }
 
     #[test]
     fn test_get_deposits_of() {
-        let (_context, contract) = setup_contract();
+        let now = Utc::now().timestamp_millis();
+        let expires_at = now + 100;
+
+        let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
         assert_eq!(
             0,
             contract.deposits_of(&alice()),
@@ -108,39 +184,29 @@ mod tests {
     }
 
     #[test]
-    fn test_deposit() {
-        let (mut context, mut contract) = setup_contract();
+    fn test_get_0_total_funds() {
+        let now = Utc::now().timestamp_millis();
+        let expires_at = now + 100;
+
+        let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
+    }
+
+    #[test]
+    fn test_get_total_funds_after_deposits() {
+        let mut context = setup_context();
 
         testing_env!(context
             .signer_account_id(bob())
             .attached_deposit(ATTACHED_DEPOSIT)
             .build());
 
-        contract.deposit();
-
-        assert_eq!(
-            ATTACHED_DEPOSIT,
-            contract.deposits_of(&bob()),
-            "Account deposits should equal ATTACHED_DEPOSIT"
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "The owner of the contract should not deposit")]
-    fn test_owner_deposit() {
-        let (mut context, mut contract) = setup_contract();
-
-        testing_env!(context
-            .signer_account_id(alice())
-            .attached_deposit(ATTACHED_DEPOSIT)
-            .build());
+        let now = Utc::now().timestamp_millis();
+        let expires_at = now + 100;
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
 
         contract.deposit();
-    }
-
-    #[test]
-    fn test_withdraw() {
-        let (mut context, mut contract) = setup_contract();
 
         testing_env!(context
             .signer_account_id(carol())
@@ -150,17 +216,96 @@ mod tests {
         contract.deposit();
 
         assert_eq!(
-            ATTACHED_DEPOSIT,
-            contract.deposits_of(&carol()),
-            "Account deposits should equal ATTACHED_DEPOSIT"
+            ATTACHED_DEPOSIT * 2,
+            contract.get_total_funds(),
+            "Total funds should be ATTACHED_DEPOSITx2"
         );
+    }
+
+    #[test]
+    fn test_is_withdrawal_allowed() {
+        let mut context = setup_context();
+
+        testing_env!(context
+            .signer_account_id(bob())
+            .attached_deposit(MIN_FUNDING_AMOUNT - 1_000)
+            .build());
+
+        let now = Utc::now().timestamp_millis();
+        let expires_at = now - 100;
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT * 2);
+
+        contract.deposit();
+        contract.withdraw();
+
+        testing_env!(context
+            .signer_account_id(carol())
+            .attached_deposit(MIN_FUNDING_AMOUNT - 1_000)
+            .build());
+
+        contract.deposit();
+        contract.withdraw();
+
+        assert_eq!(
+            true,
+            contract.is_withdrawal_allowed(),
+            "Withdrawal should be allowed"
+        );
+
+        assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
+    }
+
+    #[test]
+    fn test_is_withdrawal_not_allowed() {
+        let now = Utc::now().timestamp_millis();
+        let expires_at = now + 100;
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
 
         contract.withdraw();
 
         assert_eq!(
-            0,
-            contract.deposits_of(&carol()),
-            "Account deposits should equal 0"
+            false,
+            contract.is_withdrawal_allowed(),
+            "Withdrawal should not be allowed"
         );
+    }
+
+    #[test]
+    fn test_is_deposit_not_allowed() {
+        let mut context = setup_context();
+
+        testing_env!(context
+            .signer_account_id(bob())
+            .attached_deposit(MIN_FUNDING_AMOUNT)
+            .build());
+
+        let now = Utc::now().timestamp_millis();
+        let expires_at = now - 100;
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        contract.deposit();
+
+        assert_eq!(
+            false,
+            contract.is_deposit_allowed(),
+            "Deposit should not be allowed"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "The owner of the contract should not deposit")]
+    fn test_owner_deposit() {
+        let mut context = setup_context();
+
+        let now = Utc::now().timestamp_millis();
+        let expires_at = now + 100;
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        testing_env!(context
+            .signer_account_id(alice())
+            .attached_deposit(ATTACHED_DEPOSIT)
+            .build());
+
+        contract.deposit();
     }
 }
