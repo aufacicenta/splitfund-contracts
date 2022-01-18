@@ -235,7 +235,10 @@ mod tests {
 
         let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
 
-        assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
+        assert_eq!(0,
+            contract.get_total_funds(),
+            "Total funds should be 0"
+        );
     }
 
     #[test]
@@ -306,7 +309,11 @@ mod tests {
             "Withdrawal should be allowed"
         );
 
-        assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
+        assert_eq!(
+            0,
+            contract.get_total_funds(),
+            "Total funds should be 0"
+        );
     }
 
     #[test]
@@ -471,7 +478,11 @@ mod tests {
 
         contract.delegate_funds();
 
-        assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
+        assert_eq!(
+            0,
+            contract.get_total_funds(),
+            "Total funds should be 0"
+        );
 
         assert_eq!(
             MIN_FUNDING_AMOUNT,
