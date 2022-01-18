@@ -390,7 +390,7 @@ mod tests {
         assert_eq!(
             false,
             contract.is_withdrawal_allowed(),
-            "Withdrawal should be allowed"
+            "Withdrawal should not be allowed"
         );
 
         contract.delegate_funds();
@@ -419,7 +419,7 @@ mod tests {
         assert_eq!(
             false,
             contract.is_deposit_allowed(),
-            "Deposit should be allowed"
+            "Deposit should not be allowed"
         );
 
         assert_eq!(
