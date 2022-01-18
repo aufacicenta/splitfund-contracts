@@ -102,10 +102,10 @@ impl ConditionalEscrow {
         let amount = env::attached_deposit();
         let payee = env::signer_account_id();
         let current_balance = self.deposits_of(&payee);
-        let new_balance = &(&current_balance + &amount);
+        let new_balance = &(current_balance.wrapping_add(amount));
 
         self.deposits.insert(&payee, new_balance);
-        self.total_funds += amount;
+        self.total_funds = self.total_funds.wrapping_add(amount);
 
         log!(
             "{} deposited {} NEAR tokens. New balance {} — Total funds: {}",
@@ -147,7 +147,7 @@ impl ConditionalEscrow {
 
         Promise::new(payee.clone()).transfer(payment);
         self.deposits.insert(&payee, &0);
-        self.total_funds -= payment;
+        self.total_funds = self.total_funds.wrapping_sub(payment);
 
         log!(
             "{} withdrawn {} NEAR tokens. New balance {} — Total funds: {}",
@@ -256,7 +256,10 @@ mod tests {
 
         let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
 
-        assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
+        assert_eq!(0,
+            contract.get_total_funds(),
+            "Total funds should be 0"
+        );
     }
 
     #[test]
@@ -327,7 +330,11 @@ mod tests {
             "Withdrawal should be allowed"
         );
 
-        assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
+        assert_eq!(
+            0,
+            contract.get_total_funds(),
+            "Total funds should be 0"
+        );
     }
 
     #[test]
@@ -411,7 +418,7 @@ mod tests {
         assert_eq!(
             false,
             contract.is_withdrawal_allowed(),
-            "Withdrawal should be allowed"
+            "Withdrawal should not be allowed"
         );
 
         contract.delegate_funds();
@@ -440,7 +447,7 @@ mod tests {
         assert_eq!(
             false,
             contract.is_deposit_allowed(),
-            "Deposit should be allowed"
+            "Deposit should not be allowed"
         );
 
         assert_eq!(
@@ -492,7 +499,11 @@ mod tests {
 
         contract.delegate_funds();
 
-        assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
+        assert_eq!(
+            0,
+            contract.get_total_funds(),
+            "Total funds should be 0"
+        );
 
         assert_eq!(
             MIN_FUNDING_AMOUNT,
