@@ -8,7 +8,7 @@ use near_sdk::{AccountId, Balance, Promise};
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct ConditionalEscrow {
     deposits: LookupMap<AccountId, Balance>,
-    expires_at: u64,
+    expires_at: i64,
     total_funds: Balance,
     min_funding_amount: u128,
     recipient_account_id: AccountId,
@@ -23,7 +23,7 @@ impl Default for ConditionalEscrow {
 #[near_bindgen]
 impl ConditionalEscrow {
     #[init]
-    pub fn new(expires_at: u64, min_funding_amount: u128, recipient_account_id: AccountId) -> Self {
+    pub fn new(expires_at: i64, min_funding_amount: u128, recipient_account_id: AccountId) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized");
         Self {
             deposits: LookupMap::new(b"r".to_vec()),
@@ -45,7 +45,7 @@ impl ConditionalEscrow {
         self.total_funds
     }
 
-    pub fn get_expiration_date(&self) -> u64 {
+    pub fn get_expiration_date(&self) -> i64 {
         self.expires_at
     }
 
@@ -65,7 +65,8 @@ impl ConditionalEscrow {
         self.has_contract_expired() && !self.is_funding_minimum_reached()
     }
 
-    pub fn get_block_timestamp(&self) -> u64 {
+    // @TODO remove when done
+    pub fn get_current_block_timestamp(&self) -> u64 {
         env::block_timestamp()
     }
 
@@ -78,17 +79,10 @@ impl ConditionalEscrow {
         );
 
         if !self.is_deposit_allowed() {
-            let dt = DateTime::<Utc>::from_utc(
-                NaiveDateTime::from_timestamp(0, self.expires_at.try_into().unwrap()),
-                Utc,
-            )
-            .format("%c");
-
-            let block_timestamp = DateTime::<Utc>::from_utc(
-                NaiveDateTime::from_timestamp(0, env::block_timestamp().try_into().unwrap()),
-                Utc,
-            )
-            .format("%c");
+            let dt = ConditionalEscrow::get_formatted_datetime(self.expires_at);
+            let block_timestamp = ConditionalEscrow::get_formatted_datetime(
+                env::block_timestamp().try_into().unwrap(),
+            );
 
             log!("Deposit is only allowed before {}. Current total funds: {}. Current block timestamp: {}",
                     dt,
@@ -120,17 +114,10 @@ impl ConditionalEscrow {
     #[payable]
     pub fn withdraw(&mut self) {
         if !self.is_withdrawal_allowed() {
-            let dt = DateTime::<Utc>::from_utc(
-                NaiveDateTime::from_timestamp(0, self.expires_at.try_into().unwrap()),
-                Utc,
-            )
-            .format("%c");
-
-            let block_timestamp = DateTime::<Utc>::from_utc(
-                NaiveDateTime::from_timestamp(0, env::block_timestamp().try_into().unwrap()),
-                Utc,
-            )
-            .format("%c");
+            let dt = ConditionalEscrow::get_formatted_datetime(self.expires_at);
+            let block_timestamp = ConditionalEscrow::get_formatted_datetime(
+                env::block_timestamp().try_into().unwrap(),
+            );
 
             log!("Withdrawal is only allowed after {}, if the minimum of {} NEAR is not reached. Current total funds: {}. Current block timestamp: {}",
                 dt,
@@ -187,6 +174,15 @@ impl ConditionalEscrow {
     fn is_funding_minimum_reached(&self) -> bool {
         self.get_total_funds() >= self.get_min_funding_amount()
     }
+
+    fn get_formatted_datetime(timestamp: i64) -> String {
+        let timestamp_string = timestamp.to_string();
+        let secs = timestamp_string.get(0..10).unwrap().parse::<i64>().unwrap();
+        let nanosecs = timestamp_string.get(10..).unwrap().parse::<u32>().unwrap();
+        DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(secs, nanosecs), Utc)
+            .format("%c")
+            .to_string()
+    }
 }
 
 #[cfg(test)]
@@ -201,7 +197,7 @@ mod tests {
 
     fn setup_context() -> VMContextBuilder {
         let mut context = VMContextBuilder::new();
-        let now = Utc::now().timestamp_subsec_nanos();
+        let now = Utc::now().timestamp_nanos();
         testing_env!(context
             .predecessor_account_id(alice())
             .block_timestamp(now.try_into().unwrap())
@@ -209,19 +205,19 @@ mod tests {
         return context;
     }
 
-    fn setup_contract(expires_at: u64, min_funding_amount: u128) -> ConditionalEscrow {
+    fn setup_contract(expires_at: i64, min_funding_amount: u128) -> ConditionalEscrow {
         let contract = ConditionalEscrow::new(expires_at, min_funding_amount, accounts(3));
         return contract;
     }
 
-    fn add_expires_at_nanos(offset: u32) -> u64 {
-        let now = Utc::now().timestamp_subsec_nanos();
-        (now + offset).into()
+    fn add_expires_at_nanos(offset: i64) -> i64 {
+        let now = Utc::now().timestamp_nanos();
+        now.wrapping_add(offset)
     }
 
-    fn substract_expires_at_nanos(offset: u32) -> u64 {
-        let now = Utc::now().timestamp_subsec_nanos();
-        (now - offset).into()
+    fn substract_expires_at_nanos(offset: i64) -> i64 {
+        let now = Utc::now().timestamp_nanos();
+        now.wrapping_sub(offset)
     }
 
     #[test]
@@ -256,10 +252,7 @@ mod tests {
 
         let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
 
-        assert_eq!(0,
-            contract.get_total_funds(),
-            "Total funds should be 0"
-        );
+        assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
     }
 
     #[test]
@@ -330,17 +323,14 @@ mod tests {
             "Withdrawal should be allowed"
         );
 
-        assert_eq!(
-            0,
-            contract.get_total_funds(),
-            "Total funds should be 0"
-        );
+        assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
     }
 
     #[test]
     #[should_panic(expected = "Cannot withdraw")]
     fn test_is_withdrawal_not_allowed() {
-        let expires_at = add_expires_at_nanos(100);
+        setup_context();
+        let expires_at = add_expires_at_nanos(1_000_000);
 
         let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
 
@@ -499,11 +489,7 @@ mod tests {
 
         contract.delegate_funds();
 
-        assert_eq!(
-            0,
-            contract.get_total_funds(),
-            "Total funds should be 0"
-        );
+        assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
 
         assert_eq!(
             MIN_FUNDING_AMOUNT,
