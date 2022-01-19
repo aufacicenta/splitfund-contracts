@@ -120,13 +120,13 @@ impl EscrowFactory {
 mod tests {
     use super::*;
     use near_sdk::test_utils::test_env::alice;
-    use near_sdk::test_utils::{testing_env_with_promise_results, VMContextBuilder};
+    use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::{testing_env, PromiseResult};
 
     fn setup_contract() -> (VMContextBuilder, EscrowFactory) {
         let mut context = VMContextBuilder::new();
         testing_env!(context.current_account_id(alice()).build());
-        let mut factory = EscrowFactory::new();
+        let factory = EscrowFactory::new();
         (context, factory)
     }
 
@@ -144,9 +144,12 @@ mod tests {
             "{}".as_bytes().to_vec().into(),
         );
 
-        testing_env_with_promise_results(
+        testing_env!(
             context.predecessor_account_id(alice()).build(),
-            PromiseResult::Successful(vec![]),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Successful(vec![])],
         );
 
         factory.on_create_basic_escrow(
