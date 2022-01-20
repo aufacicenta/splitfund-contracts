@@ -64,11 +64,6 @@ impl ConditionalEscrow {
         self.has_contract_expired() && !self.is_funding_minimum_reached()
     }
 
-    // @TODO remove when done
-    pub fn get_current_block_timestamp(&self) -> u64 {
-        env::block_timestamp()
-    }
-
     #[payable]
     pub fn deposit(&mut self) {
         assert_ne!(
@@ -158,7 +153,7 @@ impl ConditionalEscrow {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{Utc};
+    use chrono::Utc;
     use near_sdk::test_utils::test_env::{alice, bob, carol};
     use near_sdk::test_utils::{accounts, VMContextBuilder};
     use near_sdk::testing_env;
