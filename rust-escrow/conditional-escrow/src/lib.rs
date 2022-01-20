@@ -1,4 +1,3 @@
-use chrono::{DateTime, NaiveDateTime, Utc};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
 use near_sdk::{env, log, near_bindgen};
@@ -8,7 +7,7 @@ use near_sdk::{AccountId, Balance, Promise};
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct ConditionalEscrow {
     deposits: LookupMap<AccountId, Balance>,
-    expires_at: i64,
+    expires_at: u64,
     total_funds: Balance,
     min_funding_amount: u128,
     recipient_account_id: AccountId,
@@ -23,7 +22,7 @@ impl Default for ConditionalEscrow {
 #[near_bindgen]
 impl ConditionalEscrow {
     #[init]
-    pub fn new(expires_at: i64, min_funding_amount: u128, recipient_account_id: AccountId) -> Self {
+    pub fn new(expires_at: u64, min_funding_amount: u128, recipient_account_id: AccountId) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized");
         Self {
             deposits: LookupMap::new(b"r".to_vec()),
@@ -45,7 +44,7 @@ impl ConditionalEscrow {
         self.total_funds
     }
 
-    pub fn get_expiration_date(&self) -> i64 {
+    pub fn get_expiration_date(&self) -> u64 {
         self.expires_at
     }
 
@@ -78,20 +77,10 @@ impl ConditionalEscrow {
             "The owner of the contract should not deposit"
         );
 
-        if !self.is_deposit_allowed() {
-            let dt = ConditionalEscrow::get_formatted_datetime(self.expires_at);
-            let block_timestamp = ConditionalEscrow::get_formatted_datetime(
-                env::block_timestamp().try_into().unwrap(),
-            );
-
-            log!("Deposit is only allowed before {}. Current total funds: {}. Current block timestamp: {}",
-                    dt,
-                    self.get_total_funds(),
-                    block_timestamp
-                );
-
-            panic!("Cannot deposit");
-        };
+        assert!(
+            self.is_deposit_allowed(),
+            "ERR_DEPOSIT_NOT_ALLOWED"
+        );
 
         let amount = env::attached_deposit();
         let payee = env::signer_account_id();
@@ -113,21 +102,10 @@ impl ConditionalEscrow {
 
     #[payable]
     pub fn withdraw(&mut self) {
-        if !self.is_withdrawal_allowed() {
-            let dt = ConditionalEscrow::get_formatted_datetime(self.expires_at);
-            let block_timestamp = ConditionalEscrow::get_formatted_datetime(
-                env::block_timestamp().try_into().unwrap(),
-            );
-
-            log!("Withdrawal is only allowed after {}, if the minimum of {} NEAR is not reached. Current total funds: {}. Current block timestamp: {}",
-                dt,
-                self.get_min_funding_amount(),
-                self.get_total_funds(),
-                block_timestamp
-            );
-
-            panic!("Cannot withdraw");
-        };
+        assert!(
+            self.is_withdrawal_allowed(),
+            "ERR_WITHDRAWAL_NOT_ALLOWED"
+        );
 
         let payee = env::signer_account_id();
         let payment = self.deposits_of(&payee);
@@ -148,9 +126,10 @@ impl ConditionalEscrow {
 
     #[payable]
     pub fn delegate_funds(&mut self) {
-        if self.is_deposit_allowed() || self.is_withdrawal_allowed() {
-            panic!("Cannot delegate the funds while the contract is active or has expired");
-        };
+        assert!(
+            !(self.is_deposit_allowed() || self.is_withdrawal_allowed()),
+            "ERR_DELEGATE_NOT_ALLOWED"
+        );
 
         let payee = self.get_recipient_account_id();
         let total_funds = self.get_total_funds();
@@ -174,20 +153,12 @@ impl ConditionalEscrow {
     fn is_funding_minimum_reached(&self) -> bool {
         self.get_total_funds() >= self.get_min_funding_amount()
     }
-
-    fn get_formatted_datetime(timestamp: i64) -> String {
-        let timestamp_string = timestamp.to_string();
-        let secs = timestamp_string.get(0..10).unwrap().parse::<i64>().unwrap();
-        let nanosecs = timestamp_string.get(10..).unwrap().parse::<u32>().unwrap();
-        DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(secs, nanosecs), Utc)
-            .format("%c")
-            .to_string()
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{Utc};
     use near_sdk::test_utils::test_env::{alice, bob, carol};
     use near_sdk::test_utils::{accounts, VMContextBuilder};
     use near_sdk::testing_env;
@@ -197,7 +168,7 @@ mod tests {
 
     fn setup_context() -> VMContextBuilder {
         let mut context = VMContextBuilder::new();
-        let now = Utc::now().timestamp_nanos();
+        let now = Utc::now().timestamp_subsec_nanos();
         testing_env!(context
             .predecessor_account_id(alice())
             .block_timestamp(now.try_into().unwrap())
@@ -205,19 +176,19 @@ mod tests {
         return context;
     }
 
-    fn setup_contract(expires_at: i64, min_funding_amount: u128) -> ConditionalEscrow {
+    fn setup_contract(expires_at: u64, min_funding_amount: u128) -> ConditionalEscrow {
         let contract = ConditionalEscrow::new(expires_at, min_funding_amount, accounts(3));
         return contract;
     }
 
-    fn add_expires_at_nanos(offset: i64) -> i64 {
-        let now = Utc::now().timestamp_nanos();
-        now.wrapping_add(offset)
+    fn add_expires_at_nanos(offset: u32) -> u64 {
+        let now = Utc::now().timestamp_subsec_nanos();
+        (now + offset).into()
     }
 
-    fn substract_expires_at_nanos(offset: i64) -> i64 {
-        let now = Utc::now().timestamp_nanos();
-        now.wrapping_sub(offset)
+    fn substract_expires_at_nanos(offset: u32) -> u64 {
+        let now = Utc::now().timestamp_subsec_nanos();
+        (now - offset).into()
     }
 
     #[test]
@@ -327,7 +298,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Cannot withdraw")]
+    #[should_panic(expected = "ERR_WITHDRAWAL_NOT_ALLOWED")]
     fn test_is_withdrawal_not_allowed() {
         setup_context();
         let expires_at = add_expires_at_nanos(1_000_000);
@@ -344,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Cannot deposit")]
+    #[should_panic(expected = "ERR_DEPOSIT_NOT_ALLOWED")]
     fn test_is_deposit_not_allowed() {
         let mut context = setup_context();
 
@@ -384,7 +355,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Cannot delegate the funds while the contract is active")]
+    #[should_panic(expected = "ERR_DELEGATE_NOT_ALLOWED")]
     fn test_should_not_delegate_funds_if_active() {
         let mut context = setup_context();
 
@@ -415,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Cannot delegate the funds while the contract is active")]
+    #[should_panic(expected = "ERR_DELEGATE_NOT_ALLOWED")]
     fn test_should_not_delegate_funds_if_expired() {
         let mut context = setup_context();
 
