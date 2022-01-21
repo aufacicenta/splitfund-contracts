@@ -1,12 +1,12 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::LookupMap;
+use near_sdk::collections::UnorderedMap;
 use near_sdk::{env, log, near_bindgen};
 use near_sdk::{AccountId, Balance, Promise};
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct ConditionalEscrow {
-    deposits: LookupMap<AccountId, Balance>,
+    deposits: UnorderedMap<AccountId, Balance>,
     expires_at: u64,
     total_funds: Balance,
     min_funding_amount: u128,
@@ -25,7 +25,7 @@ impl ConditionalEscrow {
     pub fn new(expires_at: u64, min_funding_amount: u128, recipient_account_id: AccountId) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized");
         Self {
-            deposits: LookupMap::new(b"r".to_vec()),
+            deposits: UnorderedMap::new(b"r".to_vec()),
             total_funds: 0,
             expires_at,
             min_funding_amount,
@@ -38,6 +38,10 @@ impl ConditionalEscrow {
             Some(deposit) => deposit,
             None => 0,
         }
+    }
+
+    pub fn get_deposits(&self) -> Vec<(AccountId, Balance)> {
+        self.deposits.to_vec()
     }
 
     pub fn get_total_funds(&self) -> Balance {
@@ -69,13 +73,10 @@ impl ConditionalEscrow {
         assert_ne!(
             env::current_account_id(),
             env::signer_account_id(),
-            "The owner of the contract should not deposit"
+            "ERR_OWNER_SHOULD_NOT_DEPOSIT"
         );
 
-        assert!(
-            self.is_deposit_allowed(),
-            "ERR_DEPOSIT_NOT_ALLOWED"
-        );
+        assert!(self.is_deposit_allowed(), "ERR_DEPOSIT_NOT_ALLOWED");
 
         let amount = env::attached_deposit();
         let payee = env::signer_account_id();
@@ -97,10 +98,7 @@ impl ConditionalEscrow {
 
     #[payable]
     pub fn withdraw(&mut self) {
-        assert!(
-            self.is_withdrawal_allowed(),
-            "ERR_WITHDRAWAL_NOT_ALLOWED"
-        );
+        assert!(self.is_withdrawal_allowed(), "ERR_WITHDRAWAL_NOT_ALLOWED");
 
         let payee = env::signer_account_id();
         let payment = self.deposits_of(&payee);
@@ -196,6 +194,28 @@ mod tests {
             0,
             contract.deposits_of(&alice()),
             "Account deposits should be 0"
+        );
+    }
+
+    #[test]
+    fn test_get_deposits() {
+        let mut context = setup_context();
+
+        testing_env!(context
+            .signer_account_id(bob())
+            .attached_deposit(ATTACHED_DEPOSIT)
+            .build());
+
+        let expires_at = add_expires_at_nanos(100);
+
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        contract.deposit();
+
+        assert_eq!(
+            contract.get_deposits(),
+            vec![(bob(), ATTACHED_DEPOSIT)],
+            "Gets all deposits as vec"
         );
     }
 
@@ -333,7 +353,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "The owner of the contract should not deposit")]
+    #[should_panic(expected = "ERR_OWNER_SHOULD_NOT_DEPOSIT")]
     fn test_owner_deposit() {
         let mut context = setup_context();
 
