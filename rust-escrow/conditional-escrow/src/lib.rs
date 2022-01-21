@@ -73,13 +73,10 @@ impl ConditionalEscrow {
         assert_ne!(
             env::current_account_id(),
             env::signer_account_id(),
-            "The owner of the contract should not deposit"
+            "ERR_OWNER_SHOULD_NOT_DEPOSIT"
         );
 
-        assert!(
-            self.is_deposit_allowed(),
-            "ERR_DEPOSIT_NOT_ALLOWED"
-        );
+        assert!(self.is_deposit_allowed(), "ERR_DEPOSIT_NOT_ALLOWED");
 
         let amount = env::attached_deposit();
         let payee = env::signer_account_id();
@@ -101,10 +98,7 @@ impl ConditionalEscrow {
 
     #[payable]
     pub fn withdraw(&mut self) {
-        assert!(
-            self.is_withdrawal_allowed(),
-            "ERR_WITHDRAWAL_NOT_ALLOWED"
-        );
+        assert!(self.is_withdrawal_allowed(), "ERR_WITHDRAWAL_NOT_ALLOWED");
 
         let payee = env::signer_account_id();
         let payment = self.deposits_of(&payee);
@@ -220,8 +214,8 @@ mod tests {
 
         assert_eq!(
             contract.get_deposits(),
-            vec![(bob(),ATTACHED_DEPOSIT)],
-            "Only Bob must have deposited"
+            vec![(bob(), ATTACHED_DEPOSIT)],
+            "Gets all deposits as vec"
         );
     }
 
@@ -359,7 +353,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "The owner of the contract should not deposit")]
+    #[should_panic(expected = "ERR_OWNER_SHOULD_NOT_DEPOSIT")]
     fn test_owner_deposit() {
         let mut context = setup_context();
 
