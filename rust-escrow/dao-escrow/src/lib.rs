@@ -1,6 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
-use near_sdk::{env, ext_contract, Gas, log, near_bindgen};
+use near_sdk::{env, ext_contract, Gas, near_bindgen};
 use near_sdk::json_types::{Base64VecU8};
 use near_sdk::{AccountId, Balance, Promise, PromiseResult};
 
@@ -51,17 +51,30 @@ impl DaoEscrow {
         }
     }
 
-    fn generate_dao_config(&self, name: &String, purpose: &String) -> Vec<u8> {
-        format!(r#"{{ "policy": {{ "roles": [ {{ "name": "Everyone", "kind": {{ "Group": [ "poguz.testnet" ] }}, "permissions": [ "*:Finalize", "*:AddProposal", "*:VoteApprove", "*:VoteReject", "*:VoteRemove" ], "vote_policy": {{}} }}, {{ "name": "all", "kind": "Everyone", "permissions": [ "*:AddProposal" ], "vote_policy": {{}} }} ], "default_vote_policy": {{ "weight_kind": "RoleWeight", "quorum": "0", "threshold": [ 1, 2 ] }}, "proposal_bond": "100000000000000000000000", "proposal_period": "604800000000000", "bounty_bond": "100000000000000000000000", "bounty_forgiveness_period": "604800000000000" }}, "config": {{ "name": "{}", "purpose": "{}", "metadata": "" }} }}"#, name, purpose).into_bytes()
+    fn generate_dao_config(&self, name: String, accounts: String) -> Vec<u8> {
+        format!(r#"{{ "policy": {{ "roles": [ {{ "name": "Everyone", "kind": {{ "Group": [ {} ] }}, "permissions": [ "*:Finalize", "*:AddProposal", "*:VoteApprove", "*:VoteReject", "*:VoteRemove" ], "vote_policy": {{}} }}, {{ "name": "all", "kind": "Everyone", "permissions": [ "*:AddProposal" ], "vote_policy": {{}} }} ], "default_vote_policy": {{ "weight_kind": "RoleWeight", "quorum": "0", "threshold": [ 1, 2 ] }}, "proposal_bond": "100000000000000000000000", "proposal_period": "604800000000000", "bounty_bond": "100000000000000000000000", "bounty_forgiveness_period": "604800000000000" }}, "config": {{ "name": "{}", "purpose": "", "metadata": "" }} }}"#, accounts, name).into_bytes()
+    }
+    
+    fn get_deposit_accounts(&self, deposits: Vec<(AccountId, Balance)>) -> String {
+        let mut accounts = format!(r#""{}""#, env::current_account_id().to_string());
+
+        for i in &deposits {
+            accounts += ", ";
+            accounts += &format!(r#""{}""#, &i.0.to_string().to_string());
+        }
+
+        accounts
     }
 
     #[payable]
-    pub fn create_dao_call(&mut self, country_code: String, escrow_account: AccountId) -> Promise {
+    pub fn create_dao(&mut self, country_code: String, deposits: Vec<(AccountId, Balance)>) -> Promise {
         let mut daos_by_country = self.daos_of(&country_code);
         daos_by_country = daos_by_country.wrapping_add(1);
         
+        // Get Parameters
+        let deposit_accounts = self.get_deposit_accounts(deposits);
         let dao_name = format!("ce_{}_{}", country_code, daos_by_country);
-        let args = self.generate_dao_config(&dao_name, &"".to_string());
+        let args = self.generate_dao_config(dao_name.clone(), deposit_accounts);
 
         // Contract Call
         ext_dao_factory::create(
@@ -77,12 +90,9 @@ impl DaoEscrow {
             0,
             GAS_FOR_CREATE_CALLBACK,
         ))
-        //log!("{} daos en el pais {}, escrow {}", daos_by_country, country_code, escrow_account);
-        //let config = self.generate_dao_config("hola".to_string(), "nada".to_string());
-        //log!("{:?}", config);
     }
 
-    pub fn on_create_callback(&mut self, country_code: String, daos_by_country: u128) -> bool{
+    pub fn on_create_callback(&mut self, country_code: String, daos_by_country: u128) -> bool {
         assert_eq!(
             env::promise_results_count(),
             1,
@@ -120,8 +130,8 @@ mod tests {
         testing_env!(context);
 
         let mut contract = DaoEscrow::new("sputnikv2.testnet".parse::<AccountId>().unwrap());
-        contract.create_dao_call("gt".to_string(), bob());
-        contract.create_dao_call("gt".to_string(), bob());
+        contract.create_dao_call("gt".to_string(), vec![]);
+        contract.create_dao_call("gt".to_string(), vec![(bob(), 1000)]);
 
         //assert_eq!(
         //    contract.daos_of(&"gt".to_string()),
