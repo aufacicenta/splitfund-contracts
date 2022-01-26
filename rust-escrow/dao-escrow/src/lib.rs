@@ -44,14 +44,14 @@ impl DaoEscrow {
         }
     }
 
-    pub fn daos_of(&self, country_code: &String) -> u128 {
-        match self.daos.get(country_code) {
+    pub fn daos_of(&self, country_code: String) -> u128 {
+        match self.daos.get(&country_code) {
             Some(country) => country,
             None => 0,
         }
     }
 
-    fn generate_dao_config(&self, name: String, accounts: String) -> Vec<u8> {
+    fn get_dao_config(&self, name: String, accounts: String) -> Vec<u8> {
         format!(r#"{{ "policy": {{ "roles": [ {{ "name": "Everyone", "kind": {{ "Group": [ {} ] }}, "permissions": [ "*:Finalize", "*:AddProposal", "*:VoteApprove", "*:VoteReject", "*:VoteRemove" ], "vote_policy": {{}} }}, {{ "name": "all", "kind": "Everyone", "permissions": [ "*:AddProposal" ], "vote_policy": {{}} }} ], "default_vote_policy": {{ "weight_kind": "RoleWeight", "quorum": "0", "threshold": [ 1, 2 ] }}, "proposal_bond": "100000000000000000000000", "proposal_period": "604800000000000", "bounty_bond": "100000000000000000000000", "bounty_forgiveness_period": "604800000000000" }}, "config": {{ "name": "{}", "purpose": "", "metadata": "" }} }}"#, accounts, name).into_bytes()
     }
     
@@ -68,13 +68,13 @@ impl DaoEscrow {
 
     #[payable]
     pub fn create_dao(&mut self, country_code: String, deposits: Vec<(AccountId, Balance)>) -> Promise {
-        let mut daos_by_country = self.daos_of(&country_code);
+        let mut daos_by_country = self.daos_of(country_code.clone());
         daos_by_country = daos_by_country.wrapping_add(1);
         
         // Get Parameters
         let deposit_accounts = self.get_deposit_accounts(deposits);
-        let dao_name = format!("ce_{}_{}", country_code, daos_by_country);
-        let args = self.generate_dao_config(dao_name.clone(), deposit_accounts);
+        let dao_name = format!("ce_{}_{}", country_code.clone(), daos_by_country);
+        let args = self.get_dao_config(dao_name.clone(), deposit_accounts);
 
         // Contract Call
         ext_dao_factory::create(
@@ -96,7 +96,7 @@ impl DaoEscrow {
         assert_eq!(
             env::promise_results_count(),
             1,
-            "This is a callback method"
+            "ERR_CALLBACK_METHOD"
         );
 
         // handle the result from the cross contract call this method is a callback for
@@ -115,7 +115,7 @@ mod tests {
     use super::*;
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::{testing_env, VMContext};
-    use near_sdk::test_utils::test_env::{bob};
+    use near_sdk::test_utils::test_env::{alice, bob};
 
     fn get_context(is_view: bool) -> VMContext {
         VMContextBuilder::new()
@@ -125,13 +125,57 @@ mod tests {
     }
 
     #[test]
+    fn test_daos_of() {
+        let context = get_context(false);
+        testing_env!(context);
+
+        let contract = DaoEscrow::new("sputnikv2.testnet".parse::<AccountId>().unwrap());
+        
+        assert_eq!(
+            contract.get_dao_config("daoname".to_string(), "poguz.testnet".to_string()),
+            format!(r#"{{ "policy": {{ "roles": [ {{ "name": "Everyone", "kind": {{ "Group": [ {} ] }}, "permissions": [ "*:Finalize", "*:AddProposal", "*:VoteApprove", "*:VoteReject", "*:VoteRemove" ], "vote_policy": {{}} }}, {{ "name": "all", "kind": "Everyone", "permissions": [ "*:AddProposal" ], "vote_policy": {{}} }} ], "default_vote_policy": {{ "weight_kind": "RoleWeight", "quorum": "0", "threshold": [ 1, 2 ] }}, "proposal_bond": "100000000000000000000000", "proposal_period": "604800000000000", "bounty_bond": "100000000000000000000000", "bounty_forgiveness_period": "604800000000000" }}, "config": {{ "name": "{}", "purpose": "", "metadata": "" }} }}"#, "poguz.testnet".to_string(), "daoname".to_string()).into_bytes()
+        );
+    }
+
+    #[test]
+    fn test_get_dao_config() {
+        let context = get_context(false);
+        testing_env!(context);
+
+        let contract = DaoEscrow::new("sputnikv2.testnet".parse::<AccountId>().unwrap());
+        
+        assert_eq!(
+            contract.daos_of("gt".to_string()),
+            0
+        );
+    }
+
+    #[test]
+    fn test_get_deposit_accounts() {
+        let context = get_context(false);
+        testing_env!(context);
+
+        let contract = DaoEscrow::new("sputnikv2.testnet".parse::<AccountId>().unwrap());
+        
+        assert_eq!(
+            contract.get_deposit_accounts(vec![]),
+            format!(r#""{}""#, alice().to_string().to_string())
+        );
+
+        assert_eq!(
+            contract.get_deposit_accounts(vec![(bob(), 1000)]),
+            format!(r#""{}", "{}""#, alice().to_string().to_string(), bob().to_string().to_string())
+        );
+    }
+
+    #[test]
     fn test_create_dao() {
         let context = get_context(false);
         testing_env!(context);
 
         let mut contract = DaoEscrow::new("sputnikv2.testnet".parse::<AccountId>().unwrap());
-        contract.create_dao_call("gt".to_string(), vec![]);
-        contract.create_dao_call("gt".to_string(), vec![(bob(), 1000)]);
+        contract.create_dao("gt".to_string(), vec![]);
+        contract.create_dao("gt".to_string(), vec![(bob(), 1000)]);
 
         //assert_eq!(
         //    contract.daos_of(&"gt".to_string()),
