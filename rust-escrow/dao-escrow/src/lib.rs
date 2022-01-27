@@ -23,7 +23,7 @@ pub trait MyContract {
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct DaoEscrow {
-    daos: UnorderedMap<String, u128>, // Country code and sequential number
+    daos_by_country_count: UnorderedMap<String, u128>, // Country code and sequential number
     dao_factory_account: AccountId
 }
 
@@ -39,13 +39,13 @@ impl DaoEscrow {
     pub fn new(dao_factory_account: AccountId) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized");
         Self {
-            daos: UnorderedMap::new(b"r".to_vec()),
-            dao_factory_account: dao_factory_account,
+            daos_by_country_count: UnorderedMap::new(b"r".to_vec()),
+            dao_factory_account,
         }
     }
 
-    pub fn daos_of(&self, country_code: String) -> u128 {
-        match self.daos.get(&country_code) {
+    pub fn get_daos_by_country_count(&self, country_code: String) -> u128 {
+        match self.daos_by_country_count.get(&country_code) {
             Some(count) => count,
             None => 0,
         }
@@ -68,7 +68,7 @@ impl DaoEscrow {
 
     #[payable]
     pub fn create_dao(&mut self, country_code: String, deposits: Vec<(AccountId, Balance)>) -> Promise {
-        let mut daos_by_country = self.daos_of(country_code.clone());
+        let mut daos_by_country = self.get_daos_by_country_count(country_code.clone());
         daos_by_country = daos_by_country.wrapping_add(1);
         
         // Get Parameters
@@ -102,7 +102,7 @@ impl DaoEscrow {
         // handle the result from the cross contract call this method is a callback for
         match env::promise_result(0) {
             PromiseResult::Successful(_result) => {
-                self.daos.insert(&(country_code), &(daos_by_country));
+                self.daos_by_country_count.insert(&(country_code), &(daos_by_country));
                 true
             }
             _ => false,
@@ -125,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    fn test_daos_of() {
+    fn test_get_dao_config() {
         let context = get_context(false);
         testing_env!(context);
 
@@ -138,14 +138,14 @@ mod tests {
     }
 
     #[test]
-    fn test_get_dao_config() {
+    fn test_get_daos_by_country_count() {
         let context = get_context(false);
         testing_env!(context);
 
         let contract = DaoEscrow::new("sputnikv2.testnet".parse::<AccountId>().unwrap());
         
         assert_eq!(
-            contract.daos_of("gt".to_string()),
+            contract.get_daos_by_country_count("gt".to_string()),
             0
         );
     }
@@ -176,6 +176,5 @@ mod tests {
         let mut contract = DaoEscrow::new("sputnikv2.testnet".parse::<AccountId>().unwrap());
         contract.create_dao("gt".to_string(), vec![]);
         contract.create_dao("gt".to_string(), vec![(bob(), 1000)]);
-
     }
 }
