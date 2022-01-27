@@ -46,7 +46,7 @@ impl DaoEscrow {
 
     pub fn daos_of(&self, country_code: String) -> u128 {
         match self.daos.get(&country_code) {
-            Some(country) => country,
+            Some(count) => count,
             None => 0,
         }
     }
