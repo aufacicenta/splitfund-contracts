@@ -26,6 +26,7 @@ pub struct ConditionalEscrow {
     total_funds: Balance,
     min_funding_amount: u128,
     recipient_account_id: AccountId,
+    country_code: String,
 }
 
 impl Default for ConditionalEscrow {
@@ -37,7 +38,7 @@ impl Default for ConditionalEscrow {
 #[near_bindgen]
 impl ConditionalEscrow {
     #[init]
-    pub fn new(expires_at: u64, min_funding_amount: u128, recipient_account_id: AccountId) -> Self {
+    pub fn new(expires_at: u64, min_funding_amount: u128, recipient_account_id: AccountId, country_code: String) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized");
         Self {
             deposits: UnorderedMap::new(b"r".to_vec()),
@@ -45,6 +46,7 @@ impl ConditionalEscrow {
             expires_at,
             min_funding_amount,
             recipient_account_id,
+            country_code,
         }
     }
 
@@ -53,6 +55,10 @@ impl ConditionalEscrow {
             Some(deposit) => deposit,
             None => 0,
         }
+    }
+
+    pub fn get_country_code(&self) -> String {
+        self.country_code.clone()
     }
 
     pub fn get_deposits(&self) -> Vec<(AccountId, Balance)> {
@@ -139,16 +145,16 @@ impl ConditionalEscrow {
             "ERR_DELEGATE_NOT_ALLOWED"
         );
 
-        let payee = self.get_recipient_account_id();
+        let recipient_contract_id = self.get_recipient_account_id();
         let total_funds = self.get_total_funds();
-
+        
         // Create Dao
         ext_dao_escrow::create_dao(
-            "mx".to_string(),           // country_code
-            self.deposits.to_vec(),     // deposits
-            payee.clone(),              // Contract ID
-            self.get_total_funds(),     // funds
-            GAS_FOR_DELEGATE,           // GAS
+            self.country_code.clone(),      // country_code
+            self.deposits.to_vec(),         // deposits
+            recipient_contract_id.clone(),  // contract ID
+            total_funds,                    // funds
+            GAS_FOR_DELEGATE,               // gas
         );
 
         self.total_funds = 0;
@@ -156,7 +162,7 @@ impl ConditionalEscrow {
         log!(
             "Delegating {} NEAR tokens to {}. — Total funds held after call: {}",
             total_funds,
-            payee,
+            recipient_contract_id,
             self.get_total_funds()
         );
         // @TODO emit delegate_funds event
@@ -193,7 +199,7 @@ mod tests {
     }
 
     fn setup_contract(expires_at: u64, min_funding_amount: u128) -> ConditionalEscrow {
-        let contract = ConditionalEscrow::new(expires_at, min_funding_amount, accounts(3));
+        let contract = ConditionalEscrow::new(expires_at, min_funding_amount, accounts(3), "gt".to_string());
         return contract;
     }
 
@@ -205,6 +211,19 @@ mod tests {
     fn substract_expires_at_nanos(offset: u32) -> u64 {
         let now = Utc::now().timestamp_subsec_nanos();
         (now - offset).into()
+    }
+
+    #[test]
+    fn test_get_country_code() {
+        let expires_at = add_expires_at_nanos(100);
+
+        let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        assert_eq!(
+            "gt",
+            contract.get_country_code(),
+            "Country Code should be gt"
+        );
     }
 
     #[test]
