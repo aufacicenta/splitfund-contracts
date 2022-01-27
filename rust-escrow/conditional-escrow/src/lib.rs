@@ -1,7 +1,22 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
-use near_sdk::{env, log, near_bindgen};
+use near_sdk::{env, ext_contract, Gas, log, near_bindgen};
 use near_sdk::{AccountId, Balance, Promise};
+
+/// Amount of gas
+pub const GAS_FOR_DELEGATE: Gas = Gas(120_000_000_000_000);
+
+// define the methods we'll use on the other contract
+#[ext_contract(ext_dao_escrow)]
+pub trait DaoEscrow {
+    fn create_dao(&mut self, country_code: String, deposits: Vec<(AccountId, Balance)>);
+}
+
+// define methods we'll use as callbacks on our contract
+#[ext_contract(ext_self)]
+pub trait MyContract {
+    fn on_create_dao_callback(&self) -> bool;
+}
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
@@ -127,7 +142,15 @@ impl ConditionalEscrow {
         let payee = self.get_recipient_account_id();
         let total_funds = self.get_total_funds();
 
-        Promise::new(payee.clone()).transfer(total_funds);
+        // Create Dao
+        ext_dao_escrow::create_dao(
+            "mx".to_string(),           // country_code
+            self.deposits.to_vec(),     // deposits
+            payee.clone(),              // Contract ID
+            self.get_total_funds(),     // funds
+            GAS_FOR_DELEGATE,           // GAS
+        );
+
         self.total_funds = 0;
 
         log!(
