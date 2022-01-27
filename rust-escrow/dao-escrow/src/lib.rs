@@ -177,9 +177,5 @@ mod tests {
         contract.create_dao("gt".to_string(), vec![]);
         contract.create_dao("gt".to_string(), vec![(bob(), 1000)]);
 
-        //assert_eq!(
-        //    contract.daos_of(&"gt".to_string()),
-        //    2
-        //);
     }
 }
