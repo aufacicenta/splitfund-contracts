@@ -1,14 +1,14 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
-use near_sdk::{env, ext_contract, Gas, log, near_bindgen};
+use near_sdk::{env, ext_contract, log, near_bindgen, Gas};
 use near_sdk::{AccountId, Balance, Promise};
 
 /// Amount of gas
 pub const GAS_FOR_DELEGATE: Gas = Gas(120_000_000_000_000);
 
 // define the methods we'll use on the other contract
-#[ext_contract(ext_dao_escrow)]
-pub trait DaoEscrow {
+#[ext_contract(ext_dao_factory)]
+pub trait ExtDaoFactory {
     fn create_dao(&mut self, country_code: String, deposits: Vec<(AccountId, Balance)>);
 }
 
@@ -38,7 +38,12 @@ impl Default for ConditionalEscrow {
 #[near_bindgen]
 impl ConditionalEscrow {
     #[init]
-    pub fn new(expires_at: u64, min_funding_amount: u128, recipient_account_id: AccountId, country_code: String) -> Self {
+    pub fn new(
+        expires_at: u64,
+        min_funding_amount: u128,
+        recipient_account_id: AccountId,
+        country_code: String,
+    ) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized");
         Self {
             deposits: UnorderedMap::new(b"r".to_vec()),
@@ -147,14 +152,14 @@ impl ConditionalEscrow {
 
         let recipient_contract_id = self.get_recipient_account_id();
         let total_funds = self.get_total_funds();
-        
+
         // Create Dao
-        ext_dao_escrow::create_dao(
-            self.country_code.clone(),      // country_code
-            self.deposits.to_vec(),         // deposits
-            recipient_contract_id.clone(),  // contract ID
-            total_funds,                    // funds
-            GAS_FOR_DELEGATE,               // gas
+        ext_dao_factory::create_dao(
+            self.country_code.clone(),     // country_code
+            self.deposits.to_vec(),        // deposits
+            recipient_contract_id.clone(), // contract ID
+            total_funds,                   // funds
+            GAS_FOR_DELEGATE,              // gas
         );
 
         self.total_funds = 0;
@@ -199,7 +204,12 @@ mod tests {
     }
 
     fn setup_contract(expires_at: u64, min_funding_amount: u128) -> ConditionalEscrow {
-        let contract = ConditionalEscrow::new(expires_at, min_funding_amount, accounts(3), "gt".to_string());
+        let contract = ConditionalEscrow::new(
+            expires_at,
+            min_funding_amount,
+            accounts(3),
+            "gt".to_string(),
+        );
         return contract;
     }
 

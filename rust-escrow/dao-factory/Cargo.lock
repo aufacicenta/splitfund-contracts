@@ -263,7 +263,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "dao-escrow"
+name = "dao-factory"
 version = "0.1.0"
 dependencies = [
  "near-sdk",

@@ -1,5 +1,5 @@
 [package]
-name = "dao-escrow"
+name = "dao-factory"
 version = "0.1.0"
 edition = "2021"
 authors = ["poguz <susguzman@gmail.com>"]
