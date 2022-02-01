@@ -93,7 +93,7 @@ impl ConditionalEscrow {
     }
 
     pub fn is_deposit_allowed(&self) -> bool {
-        env::attached_deposit() <= self.get_unpaid_funding_amount() && !self.has_contract_expired() && !self.is_funding_reached()
+        !self.has_contract_expired() && !self.is_funding_reached()
     }
 
     pub fn is_withdrawal_allowed(&self) -> bool {
@@ -109,6 +109,7 @@ impl ConditionalEscrow {
         );
 
         assert!(self.is_deposit_allowed(), "ERR_DEPOSIT_NOT_ALLOWED");
+        assert!(env::attached_deposit() <= self.get_unpaid_funding_amount(), "ERR_DEPOSIT_NOT_ALLOWED");
 
         let amount = env::attached_deposit();
         let payee = env::signer_account_id();
