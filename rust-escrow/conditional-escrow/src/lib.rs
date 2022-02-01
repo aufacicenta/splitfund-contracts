@@ -24,7 +24,8 @@ pub struct ConditionalEscrow {
     deposits: UnorderedMap<AccountId, Balance>,
     expires_at: u64,
     total_funds: Balance,
-    min_funding_amount: u128,
+    funding_amount_limit: u128,
+    unpaid_funding_amount: u128,
     recipient_account_id: AccountId,
     country_code: String,
 }
@@ -40,7 +41,7 @@ impl ConditionalEscrow {
     #[init]
     pub fn new(
         expires_at: u64,
-        min_funding_amount: u128,
+        funding_amount_limit: u128,
         recipient_account_id: AccountId,
         country_code: String,
     ) -> Self {
@@ -48,8 +49,9 @@ impl ConditionalEscrow {
         Self {
             deposits: UnorderedMap::new(b"r".to_vec()),
             total_funds: 0,
+            funding_amount_limit,
+            unpaid_funding_amount: funding_amount_limit,
             expires_at,
-            min_funding_amount,
             recipient_account_id,
             country_code,
         }
@@ -78,8 +80,12 @@ impl ConditionalEscrow {
         self.expires_at
     }
 
-    pub fn get_min_funding_amount(&self) -> u128 {
-        self.min_funding_amount
+    pub fn get_funding_amount_limit(&self) -> u128 {
+        self.funding_amount_limit
+    }
+
+    pub fn get_unpaid_funding_amount(&self) -> u128 {
+        self.unpaid_funding_amount
     }
 
     pub fn get_recipient_account_id(&self) -> AccountId {
@@ -87,11 +93,11 @@ impl ConditionalEscrow {
     }
 
     pub fn is_deposit_allowed(&self) -> bool {
-        !self.has_contract_expired()
+        env::attached_deposit() <= self.get_unpaid_funding_amount() && !self.has_contract_expired() && !self.is_funding_reached()
     }
 
     pub fn is_withdrawal_allowed(&self) -> bool {
-        self.has_contract_expired() && !self.is_funding_minimum_reached()
+        self.has_contract_expired() && !self.is_funding_reached()
     }
 
     #[payable]
@@ -111,13 +117,15 @@ impl ConditionalEscrow {
 
         self.deposits.insert(&payee, new_balance);
         self.total_funds = self.total_funds.wrapping_add(amount);
+        self.unpaid_funding_amount = self.unpaid_funding_amount.wrapping_sub(amount);
 
         log!(
-            "{} deposited {} NEAR tokens. New balance {} — Total funds: {}",
+            "{} deposited {} NEAR tokens. New balance {} — Total funds: {} — Unpaid funds: {}",
             &payee,
             amount,
             new_balance,
-            self.total_funds
+            self.total_funds,
+            self.unpaid_funding_amount
         );
         // @TODO emit deposit event
     }
@@ -132,13 +140,15 @@ impl ConditionalEscrow {
         Promise::new(payee.clone()).transfer(payment);
         self.deposits.insert(&payee, &0);
         self.total_funds = self.total_funds.wrapping_sub(payment);
+        self.unpaid_funding_amount = self.unpaid_funding_amount.wrapping_add(payment);
 
         log!(
-            "{} withdrawn {} NEAR tokens. New balance {} — Total funds: {}",
+            "{} withdrawn {} NEAR tokens. New balance {} — Total funds: {} — Unpaid funds: {}",
             &payee,
             payment,
             self.deposits_of(&payee),
-            self.total_funds
+            self.total_funds,
+            self.unpaid_funding_amount
         );
         // @TODO emit withdraw event
     }
@@ -177,8 +187,8 @@ impl ConditionalEscrow {
         self.expires_at < env::block_timestamp().try_into().unwrap()
     }
 
-    fn is_funding_minimum_reached(&self) -> bool {
-        self.get_total_funds() >= self.get_min_funding_amount()
+    fn is_funding_reached(&self) -> bool {
+        self.get_total_funds() >= self.get_funding_amount_limit()
     }
 }
 
@@ -200,17 +210,19 @@ mod tests {
             .predecessor_account_id(alice())
             .block_timestamp(now.try_into().unwrap())
             .build());
-        return context;
+
+        context
     }
 
-    fn setup_contract(expires_at: u64, min_funding_amount: u128) -> ConditionalEscrow {
+    fn setup_contract(expires_at: u64, funding_amount_limit: u128) -> ConditionalEscrow {
         let contract = ConditionalEscrow::new(
             expires_at,
-            min_funding_amount,
+            funding_amount_limit,
             accounts(3),
             "gt".to_string(),
         );
-        return contract;
+
+        contract
     }
 
     fn add_expires_at_nanos(offset: u32) -> u64 {
@@ -291,6 +303,28 @@ mod tests {
         let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
 
         assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
+    }
+
+    #[test]
+    fn test_get_correct_unpaid_funding_amount() {
+        let mut context = setup_context();
+
+        testing_env!(context
+            .signer_account_id(bob())
+            .attached_deposit(ATTACHED_DEPOSIT)
+            .build());
+
+        let expires_at = add_expires_at_nanos(100);
+
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        contract.deposit();
+
+        assert_eq!(
+            MIN_FUNDING_AMOUNT - ATTACHED_DEPOSIT,
+            contract.get_unpaid_funding_amount(),
+            "Unpaid funding amount is wrong"
+        );
     }
 
     #[test]
@@ -383,7 +417,30 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "ERR_DEPOSIT_NOT_ALLOWED")]
-    fn test_is_deposit_not_allowed() {
+    fn test_is_deposit_not_allowed_by_expiration_date() {
+        let mut context = setup_context();
+
+        testing_env!(context
+            .signer_account_id(bob())
+            .attached_deposit(ATTACHED_DEPOSIT)
+            .build());
+
+        let expires_at = substract_expires_at_nanos(1_000_000);
+
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        contract.deposit();
+
+        assert_eq!(
+            false,
+            contract.is_deposit_allowed(),
+            "Deposit should not be allowed"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_DEPOSIT_NOT_ALLOWED")]
+    fn test_is_deposit_not_allowed_by_total_funds_reached() {
         let mut context = setup_context();
 
         testing_env!(context
@@ -391,9 +448,16 @@ mod tests {
             .attached_deposit(MIN_FUNDING_AMOUNT)
             .build());
 
-        let expires_at = substract_expires_at_nanos(1_000_000);
+        let expires_at = add_expires_at_nanos(1_000_000);
 
         let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        contract.deposit();
+
+        testing_env!(context
+            .signer_account_id(carol())
+            .attached_deposit(ATTACHED_DEPOSIT)
+            .build());
 
         contract.deposit();
 
@@ -497,14 +561,14 @@ mod tests {
 
         testing_env!(context
             .signer_account_id(bob())
-            .attached_deposit(MIN_FUNDING_AMOUNT)
+            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
             .build());
 
         contract.deposit();
 
         testing_env!(context
             .signer_account_id(carol())
-            .attached_deposit(MIN_FUNDING_AMOUNT)
+            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
             .build());
 
         contract.deposit();
@@ -530,13 +594,13 @@ mod tests {
         assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
 
         assert_eq!(
-            MIN_FUNDING_AMOUNT,
+            MIN_FUNDING_AMOUNT / 2,
             contract.deposits_of(&bob()),
             "Account deposits should be MIN_FUNDING_AMOUNT"
         );
 
         assert_eq!(
-            MIN_FUNDING_AMOUNT,
+            MIN_FUNDING_AMOUNT / 2,
             contract.deposits_of(&carol()),
             "Account deposits should be MIN_FUNDING_AMOUNT"
         );
