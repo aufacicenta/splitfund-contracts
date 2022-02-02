@@ -1,7 +1,7 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
 use near_sdk::{env, ext_contract, log, near_bindgen, Gas};
-use near_sdk::{AccountId, Balance, Promise, PromiseResult};
+use near_sdk::{AccountId, Balance, Promise};
 
 /// Amount of gas
 pub const GAS_FOR_DELEGATE: Gas = Gas(120_000_000_000_000);
@@ -110,7 +110,10 @@ impl ConditionalEscrow {
         );
 
         assert!(self.is_deposit_allowed(), "ERR_DEPOSIT_NOT_ALLOWED");
-        assert!(env::attached_deposit() <= self.get_unpaid_funding_amount(), "ERR_DEPOSIT_NOT_ALLOWED");
+        assert!(
+            env::attached_deposit() <= self.get_unpaid_funding_amount(),
+            "ERR_DEPOSIT_NOT_ALLOWED"
+        );
 
         let amount = env::attached_deposit();
         let payee = env::signer_account_id();
@@ -165,36 +168,33 @@ impl ConditionalEscrow {
         let recipient_contract_id = self.get_recipient_account_id();
         let total_funds = self.get_total_funds();
 
-        // Create Dao
+        // @TODO charge a fee here (1.5% initially?) when a property is sold by our contract
+
         ext_dao_factory::create_dao(
-            self.country_code.clone(),     // country_code
-            self.deposits.to_vec(),        // deposits
-            recipient_contract_id.clone(), // contract ID
-            total_funds,                   // funds
-            GAS_FOR_DELEGATE,              // gas
+            self.country_code.clone(),
+            self.deposits.to_vec(),
+            recipient_contract_id.clone(),
+            total_funds,
+            GAS_FOR_DELEGATE,
         )
         .then(ext_self::on_create_dao_callback(
             env::current_account_id(),
             0,
             GAS_FOR_DELEGATE_CALLBACK,
         ))
+
         // @TODO emit delegate_funds event
     }
 
     #[private]
-    pub fn on_create_dao_callback(&mut self) -> bool{
+    pub fn on_create_dao_callback(&mut self) -> bool {
         assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
 
-        match env::promise_result(0) {
-            PromiseResult::Successful(result) => {
-                let res = String::from_utf8_lossy(&result);
-                if res == "true" {
-                    self.total_funds = 0;
-                    return true;
-                }
-                false
-            }
-            _ => false,
+        if near_sdk::is_promise_success() {
+            self.total_funds = 0;
+            true
+        } else {
+            false
         }
     }
 
@@ -213,7 +213,7 @@ mod tests {
     use chrono::Utc;
     use near_sdk::test_utils::test_env::{alice, bob, carol};
     use near_sdk::test_utils::{accounts, VMContextBuilder};
-    use near_sdk::testing_env;
+    use near_sdk::{testing_env, PromiseResult};
 
     const ATTACHED_DEPOSIT: Balance = 8_540_000_000_000_000_000_000;
     const MIN_FUNDING_AMOUNT: u128 = 1_000_000_000_000_000_000_000_000;
@@ -607,6 +607,16 @@ mod tests {
 
         contract.delegate_funds();
 
+        testing_env!(
+            context.build(),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Successful(vec![])],
+        );
+
+        contract.on_create_dao_callback();
+
         assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
 
         contract.delegate_funds();
@@ -651,6 +661,16 @@ mod tests {
         );
 
         contract.delegate_funds();
+
+        testing_env!(
+            context.build(),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Successful(vec![])],
+        );
+
+        contract.on_create_dao_callback();
 
         assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
 
