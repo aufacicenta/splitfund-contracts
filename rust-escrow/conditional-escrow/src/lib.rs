@@ -1,7 +1,7 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
 use near_sdk::{env, ext_contract, log, near_bindgen, Gas};
-use near_sdk::{AccountId, Balance, Promise};
+use near_sdk::{AccountId, Balance, Promise, PromiseResult};
 
 /// Amount of gas
 pub const GAS_FOR_DELEGATE: Gas = Gas(120_000_000_000_000);
@@ -190,11 +190,18 @@ impl ConditionalEscrow {
     pub fn on_create_dao_callback(&mut self) -> bool {
         assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
 
-        if near_sdk::is_promise_success() {
-            self.total_funds = 0;
-            true
-        } else {
-            false
+        match env::promise_result(0) {
+            PromiseResult::Successful(result) => {
+                let res = String::from_utf8_lossy(&result);
+
+                if res == "true" {
+                    self.total_funds = 0;
+                    return true;
+                }
+
+                false
+            }
+            _ => false,
         }
     }
 
@@ -667,7 +674,7 @@ mod tests {
             near_sdk::VMConfig::test(),
             near_sdk::RuntimeFeesConfig::test(),
             Default::default(),
-            vec![PromiseResult::Successful(vec![])],
+            vec![PromiseResult::Successful(vec![true as u8])],
         );
 
         contract.on_create_dao_callback();

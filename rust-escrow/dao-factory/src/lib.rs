@@ -2,7 +2,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
 use near_sdk::json_types::Base64VecU8;
 use near_sdk::{env, ext_contract, near_bindgen, Gas};
-use near_sdk::{AccountId, Balance, Promise};
+use near_sdk::{AccountId, Balance, Promise, PromiseResult};
 
 /// Amount of gas for create action.
 pub const GAS_FOR_CREATE: Gas = Gas(90_000_000_000_000);
@@ -75,12 +75,10 @@ impl DaoFactory {
         let mut daos_by_country = self.get_daos_by_country_count(country_code.clone());
         daos_by_country = daos_by_country.wrapping_add(1);
 
-        // Get Parameters
         let deposit_accounts = self.get_deposit_accounts(deposits);
         let dao_name = format!("ce_{}_{}", country_code.clone(), daos_by_country);
         let args = self.get_dao_config(dao_name.clone(), deposit_accounts);
 
-        // Contract Call
         ext_dao_factory::create(
             dao_name.to_string(),
             Base64VecU8(args),
@@ -101,13 +99,22 @@ impl DaoFactory {
     pub fn on_create_callback(&mut self, country_code: String, daos_by_country: u128) -> bool {
         assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
 
-        if near_sdk::is_promise_success() {
-            self.daos_by_country_count
-                .insert(&(country_code), &(daos_by_country));
-            true
-        } else {
-            Promise::new(env::predecessor_account_id()).transfer(env::attached_deposit());
-            false
+        match env::promise_result(0) {
+            PromiseResult::Successful(result) => {
+                let res = String::from_utf8_lossy(&result);
+
+                if res == "true" {
+                    self.daos_by_country_count
+                        .insert(&(country_code), &(daos_by_country));
+
+                    return true;
+                }
+
+                Promise::new(env::predecessor_account_id()).transfer(env::attached_deposit());
+
+                false
+            }
+            _ => false,
         }
     }
 }
@@ -186,7 +193,7 @@ mod tests {
             near_sdk::VMConfig::test(),
             near_sdk::RuntimeFeesConfig::test(),
             Default::default(),
-            vec![PromiseResult::Successful(vec![])],
+            vec![PromiseResult::Successful(vec![true as u8])],
         );
 
         contract.on_create_callback(country_code.clone(), 2);
