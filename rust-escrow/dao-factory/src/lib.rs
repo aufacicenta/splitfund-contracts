@@ -4,9 +4,9 @@ use near_sdk::json_types::Base64VecU8;
 use near_sdk::{env, ext_contract, near_bindgen, Gas};
 use near_sdk::{AccountId, Balance, Promise, PromiseResult};
 
-/// Amount of gas for create action.
+/// Amount of gas for create action
 pub const GAS_FOR_CREATE: Gas = Gas(90_000_000_000_000);
-pub const GAS_FOR_CREATE_CALLBACK: Gas = Gas(5_000_000_000_000);
+pub const GAS_FOR_CREATE_CALLBACK: Gas = Gas(2_000_000_000_000);
 
 // define the methods we'll use on the other contract
 #[ext_contract(ext_dao_factory)]
@@ -17,7 +17,7 @@ pub trait ExtDaoFactory {
 // define methods we'll use as callbacks on our contract
 #[ext_contract(ext_self)]
 pub trait MyContract {
-    fn on_create_callback(&mut self, country_code: String, daos_by_country: u128) -> bool;
+    fn on_create_callback(&mut self, country_code: String, daos_by_country: u128, predecessor_account_id: AccountId, attached_deposit: u128) -> bool;
 }
 
 #[near_bindgen]
@@ -89,6 +89,8 @@ impl DaoFactory {
         .then(ext_self::on_create_callback(
             country_code,
             daos_by_country,
+            env::predecessor_account_id(),
+            env::attached_deposit(),
             env::current_account_id(),
             0,
             GAS_FOR_CREATE_CALLBACK,
@@ -96,7 +98,13 @@ impl DaoFactory {
     }
 
     #[private]
-    pub fn on_create_callback(&mut self, country_code: String, daos_by_country: u128) -> bool {
+    pub fn on_create_callback(
+        &mut self, 
+        country_code: String, 
+        daos_by_country: u128,
+        predecessor_account_id: AccountId, 
+        attached_deposit: u128
+    ) -> bool {
         assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
 
         match env::promise_result(0) {
@@ -110,7 +118,7 @@ impl DaoFactory {
                     return true;
                 }
 
-                Promise::new(env::predecessor_account_id()).transfer(env::attached_deposit());
+                Promise::new(predecessor_account_id).transfer(attached_deposit);
 
                 false
             }
