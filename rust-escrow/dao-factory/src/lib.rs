@@ -137,9 +137,7 @@ mod tests {
     }
 
     fn get_contract() -> DaoFactory {
-        let contract = DaoFactory::new("sputnikv2.testnet".parse::<AccountId>().unwrap());
-
-        contract
+        DaoFactory::new("sputnikv2.testnet".parse::<AccountId>().unwrap())
     }
 
     #[test]
@@ -156,7 +154,11 @@ mod tests {
     fn test_get_daos_by_country_count() {
         let contract = get_contract();
 
-        assert_eq!(contract.get_daos_by_country_count("gt".to_string()), 0);
+        assert_eq!(
+            contract.get_daos_by_country_count("gt".to_string()), 
+            0,
+            "DAOs by GT should be 0"
+        );
     }
 
     #[test]
@@ -165,7 +167,8 @@ mod tests {
 
         assert_eq!(
             contract.get_deposit_accounts(vec![]),
-            format!(r#""{}""#, alice().to_string().to_string())
+            format!(r#""{}""#, alice().to_string().to_string()),
+            "The Depositor should be alice"
         );
 
         assert_eq!(
@@ -174,7 +177,8 @@ mod tests {
                 r#""{}", "{}""#,
                 alice().to_string().to_string(),
                 bob().to_string().to_string()
-            )
+            ),
+            "Depositors should be alice and bob"
         );
     }
 
@@ -185,7 +189,21 @@ mod tests {
 
         let country_code = "gt".to_string();
 
+        // First DAO
         contract.create_dao(country_code.clone(), vec![]);
+        
+        testing_env!(
+            context.build(),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Successful("true".to_string().into_bytes())],
+        );
+
+        contract.on_create_callback(country_code.clone(), 1);
+        assert_eq!(contract.get_daos_by_country_count(country_code.clone()), 1, "DAOs by GT should be 1");
+
+        // Second DAO
         contract.create_dao(country_code.clone(), vec![(bob(), 1000)]);
 
         testing_env!(
@@ -193,11 +211,32 @@ mod tests {
             near_sdk::VMConfig::test(),
             near_sdk::RuntimeFeesConfig::test(),
             Default::default(),
-            vec![PromiseResult::Successful(vec![true as u8])],
+            vec![PromiseResult::Successful("true".to_string().into_bytes())],
         );
 
         contract.on_create_callback(country_code.clone(), 2);
+        assert_eq!(contract.get_daos_by_country_count(country_code.clone()), 2, "DAOs by GT should be 2");
+    }
 
-        assert_eq!(contract.get_daos_by_country_count(country_code), 2);
+    #[test]
+    fn test_create_dao_fail() {
+        let context = get_context();
+        let mut contract = get_contract();
+
+        let country_code = "gt".to_string();
+
+        contract.create_dao(country_code.clone(), vec![(bob(), 1000)]);
+
+        testing_env!(
+            context.build(),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Successful("false".to_string().into_bytes())],
+        );
+
+        contract.on_create_callback(country_code.clone(), 1);
+
+        assert_eq!(contract.get_daos_by_country_count(country_code), 0, "DAOs by GT should be 0");
     }
 }
