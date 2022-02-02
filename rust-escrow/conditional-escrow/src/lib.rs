@@ -1,10 +1,11 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
 use near_sdk::{env, ext_contract, log, near_bindgen, Gas};
-use near_sdk::{AccountId, Balance, Promise};
+use near_sdk::{AccountId, Balance, Promise, PromiseResult};
 
 /// Amount of gas
 pub const GAS_FOR_DELEGATE: Gas = Gas(120_000_000_000_000);
+pub const GAS_FOR_DELEGATE_CALLBACK: Gas = Gas(2_000_000_000_000);
 
 // define the methods we'll use on the other contract
 #[ext_contract(ext_dao_factory)]
@@ -15,7 +16,7 @@ pub trait ExtDaoFactory {
 // define methods we'll use as callbacks on our contract
 #[ext_contract(ext_self)]
 pub trait MyContract {
-    fn on_create_dao_callback(&self) -> bool;
+    fn on_create_dao_callback(&mut self) -> bool;
 }
 
 #[near_bindgen]
@@ -155,7 +156,7 @@ impl ConditionalEscrow {
     }
 
     #[payable]
-    pub fn delegate_funds(&mut self) {
+    pub fn delegate_funds(&mut self) -> Promise {
         assert!(
             !(self.is_deposit_allowed() || self.is_withdrawal_allowed()),
             "ERR_DELEGATE_NOT_ALLOWED"
@@ -171,17 +172,30 @@ impl ConditionalEscrow {
             recipient_contract_id.clone(), // contract ID
             total_funds,                   // funds
             GAS_FOR_DELEGATE,              // gas
-        );
-
-        self.total_funds = 0;
-
-        log!(
-            "Delegating {} NEAR tokens to {}. — Total funds held after call: {}",
-            total_funds,
-            recipient_contract_id,
-            self.get_total_funds()
-        );
+        )
+        .then(ext_self::on_create_dao_callback(
+            env::current_account_id(),
+            0,
+            GAS_FOR_DELEGATE_CALLBACK,
+        ))
         // @TODO emit delegate_funds event
+    }
+
+    #[private]
+    pub fn on_create_dao_callback(&mut self) -> bool{
+        assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
+
+        match env::promise_result(0) {
+            PromiseResult::Successful(result) => {
+                let res = String::from_utf8_lossy(&result);
+                if res == "true" {
+                    self.total_funds = 0;
+                    return true;
+                }
+                false
+            }
+            _ => false,
+        }
     }
 
     fn has_contract_expired(&self) -> bool {

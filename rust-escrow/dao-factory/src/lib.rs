@@ -17,7 +17,7 @@ pub trait ExtDaoFactory {
 // define methods we'll use as callbacks on our contract
 #[ext_contract(ext_self)]
 pub trait MyContract {
-    fn on_create_callback(&mut self, country_code: String, daos_by_country: u128) -> bool;
+    fn on_create_callback(&mut self, country_code: String, daos_by_country: u128, predecessor_account_id: AccountId, attached_deposit: u128) -> bool;
 }
 
 #[near_bindgen]
@@ -91,21 +91,34 @@ impl DaoFactory {
         .then(ext_self::on_create_callback(
             country_code,
             daos_by_country,
+            env::predecessor_account_id(),
+            env::attached_deposit(),
             env::current_account_id(),
             0,
             GAS_FOR_CREATE_CALLBACK,
         ))
     }
 
-    pub fn on_create_callback(&mut self, country_code: String, daos_by_country: u128) -> bool {
+    #[private]
+    pub fn on_create_callback(
+        &mut self, 
+        country_code: String, 
+        daos_by_country: u128,
+        predecessor_account_id: AccountId, 
+        attached_deposit: u128
+    ) -> bool {
         assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
 
         // handle the result from the cross contract call this method is a callback for
         match env::promise_result(0) {
-            PromiseResult::Successful(_result) => {
-                self.daos_by_country_count
-                    .insert(&(country_code), &(daos_by_country));
-                true
+            PromiseResult::Successful(result) => {
+                let res = String::from_utf8_lossy(&result);
+                if res == "true" {
+                    self.daos_by_country_count.insert(&(country_code), &(daos_by_country));
+                    return true;
+                }
+                Promise::new(predecessor_account_id).transfer(attached_deposit);
+                false
             }
             _ => false,
         }
