@@ -2,7 +2,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
 use near_sdk::json_types::Base64VecU8;
 use near_sdk::{env, ext_contract, near_bindgen, Gas};
-use near_sdk::{AccountId, Balance, Promise, PromiseResult};
+use near_sdk::{AccountId, Balance, Promise};
 
 /// Amount of gas for create action.
 pub const GAS_FOR_CREATE: Gas = Gas(90_000_000_000_000);
@@ -17,7 +17,7 @@ pub trait ExtDaoFactory {
 // define methods we'll use as callbacks on our contract
 #[ext_contract(ext_self)]
 pub trait MyContract {
-    fn on_create_callback(&mut self, country_code: String, daos_by_country: u128, predecessor_account_id: AccountId, attached_deposit: u128) -> bool;
+    fn on_create_callback(&mut self, country_code: String, daos_by_country: u128) -> bool;
 }
 
 #[near_bindgen]
@@ -91,8 +91,6 @@ impl DaoFactory {
         .then(ext_self::on_create_callback(
             country_code,
             daos_by_country,
-            env::predecessor_account_id(),
-            env::attached_deposit(),
             env::current_account_id(),
             0,
             GAS_FOR_CREATE_CALLBACK,
@@ -100,27 +98,16 @@ impl DaoFactory {
     }
 
     #[private]
-    pub fn on_create_callback(
-        &mut self, 
-        country_code: String, 
-        daos_by_country: u128,
-        predecessor_account_id: AccountId, 
-        attached_deposit: u128
-    ) -> bool {
+    pub fn on_create_callback(&mut self, country_code: String, daos_by_country: u128) -> bool {
         assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
 
-        // handle the result from the cross contract call this method is a callback for
-        match env::promise_result(0) {
-            PromiseResult::Successful(result) => {
-                let res = String::from_utf8_lossy(&result);
-                if res == "true" {
-                    self.daos_by_country_count.insert(&(country_code), &(daos_by_country));
-                    return true;
-                }
-                Promise::new(predecessor_account_id).transfer(attached_deposit);
-                false
-            }
-            _ => false,
+        if near_sdk::is_promise_success() {
+            self.daos_by_country_count
+                .insert(&(country_code), &(daos_by_country));
+            true
+        } else {
+            Promise::new(env::predecessor_account_id()).transfer(env::attached_deposit());
+            false
         }
     }
 }
@@ -130,21 +117,27 @@ mod tests {
     use super::*;
     use near_sdk::test_utils::test_env::{alice, bob};
     use near_sdk::test_utils::VMContextBuilder;
-    use near_sdk::{testing_env, VMContext};
+    use near_sdk::{testing_env, PromiseResult};
 
-    fn get_context(is_view: bool) -> VMContext {
-        VMContextBuilder::new()
+    fn get_context() -> VMContextBuilder {
+        let mut context = VMContextBuilder::new();
+        testing_env!(context
+            .predecessor_account_id(alice())
             .signer_account_id(bob())
-            .is_view(is_view)
-            .build()
+            .build());
+
+        context
+    }
+
+    fn get_contract() -> DaoFactory {
+        let contract = DaoFactory::new("sputnikv2.testnet".parse::<AccountId>().unwrap());
+
+        contract
     }
 
     #[test]
     fn test_get_dao_config() {
-        let context = get_context(false);
-        testing_env!(context);
-
-        let contract = DaoFactory::new("sputnikv2.testnet".parse::<AccountId>().unwrap());
+        let contract = get_contract();
 
         assert_eq!(
             contract.get_dao_config("daoname".to_string(), "poguz.testnet".to_string()),
@@ -154,20 +147,14 @@ mod tests {
 
     #[test]
     fn test_get_daos_by_country_count() {
-        let context = get_context(false);
-        testing_env!(context);
-
-        let contract = DaoFactory::new("sputnikv2.testnet".parse::<AccountId>().unwrap());
+        let contract = get_contract();
 
         assert_eq!(contract.get_daos_by_country_count("gt".to_string()), 0);
     }
 
     #[test]
     fn test_get_deposit_accounts() {
-        let context = get_context(false);
-        testing_env!(context);
-
-        let contract = DaoFactory::new("sputnikv2.testnet".parse::<AccountId>().unwrap());
+        let contract = get_contract();
 
         assert_eq!(
             contract.get_deposit_accounts(vec![]),
@@ -186,11 +173,24 @@ mod tests {
 
     #[test]
     fn test_create_dao() {
-        let context = get_context(false);
-        testing_env!(context);
+        let context = get_context();
+        let mut contract = get_contract();
 
-        let mut contract = DaoFactory::new("sputnikv2.testnet".parse::<AccountId>().unwrap());
-        contract.create_dao("gt".to_string(), vec![]);
-        contract.create_dao("gt".to_string(), vec![(bob(), 1000)]);
+        let country_code = "gt".to_string();
+
+        contract.create_dao(country_code.clone(), vec![]);
+        contract.create_dao(country_code.clone(), vec![(bob(), 1000)]);
+
+        testing_env!(
+            context.build(),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Successful(vec![])],
+        );
+
+        contract.on_create_callback(country_code.clone(), 2);
+
+        assert_eq!(contract.get_daos_by_country_count(country_code), 2);
     }
 }
