@@ -619,7 +619,7 @@ mod tests {
             near_sdk::VMConfig::test(),
             near_sdk::RuntimeFeesConfig::test(),
             Default::default(),
-            vec![PromiseResult::Successful(vec![])],
+            vec![PromiseResult::Successful("true".to_string().into_bytes())],
         );
 
         contract.on_create_dao_callback();
@@ -627,6 +627,59 @@ mod tests {
         assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
 
         contract.delegate_funds();
+    }
+
+    #[test]
+    fn test_should_not_delegate_funds_if_create_dao_fails() {
+        let mut context = setup_context();
+
+        let expires_at = add_expires_at_nanos(100);
+
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        testing_env!(context
+            .signer_account_id(bob())
+            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
+            .build());
+
+        contract.deposit();
+
+        testing_env!(context
+            .signer_account_id(carol())
+            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
+            .build());
+
+        contract.deposit();
+
+        testing_env!(context
+            .block_timestamp((expires_at + 200).try_into().unwrap())
+            .build());
+
+        assert_eq!(
+            false,
+            contract.is_deposit_allowed(),
+            "Deposit should not be allowed"
+        );
+
+        assert_eq!(
+            false,
+            contract.is_withdrawal_allowed(),
+            "Withdrawal should not be allowed"
+        );
+
+        contract.delegate_funds();
+
+        testing_env!(
+            context.build(),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Successful("false".to_string().into_bytes())],
+        );
+
+        contract.on_create_dao_callback();
+
+        assert_eq!(MIN_FUNDING_AMOUNT, contract.get_total_funds(), "Total funds should be MIN_FUNDING_AMOUNT");
     }
 
     #[test]
@@ -674,7 +727,7 @@ mod tests {
             near_sdk::VMConfig::test(),
             near_sdk::RuntimeFeesConfig::test(),
             Default::default(),
-            vec![PromiseResult::Successful(vec![true as u8])],
+            vec![PromiseResult::Successful("true".to_string().into_bytes())],
         );
 
         contract.on_create_dao_callback();
