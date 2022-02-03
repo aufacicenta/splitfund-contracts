@@ -10,7 +10,7 @@ pub const GAS_FOR_DELEGATE_CALLBACK: Gas = Gas(2_000_000_000_000);
 // define the methods we'll use on the other contract
 #[ext_contract(ext_dao_factory)]
 pub trait ExtDaoFactory {
-    fn create_dao(&mut self, country_code: String, deposits: Vec<(AccountId, Balance)>);
+    fn create_dao(&mut self, dao_name: String, deposits: Vec<(AccountId, Balance)>);
 }
 
 // define methods we'll use as callbacks on our contract
@@ -28,7 +28,7 @@ pub struct ConditionalEscrow {
     funding_amount_limit: u128,
     unpaid_funding_amount: u128,
     recipient_account_id: AccountId,
-    country_code: String,
+    dao_name: String,
 }
 
 impl Default for ConditionalEscrow {
@@ -44,7 +44,7 @@ impl ConditionalEscrow {
         expires_at: u64,
         funding_amount_limit: u128,
         recipient_account_id: AccountId,
-        country_code: String,
+        dao_name: String,
     ) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized");
         Self {
@@ -54,7 +54,7 @@ impl ConditionalEscrow {
             unpaid_funding_amount: funding_amount_limit,
             expires_at,
             recipient_account_id,
-            country_code,
+            dao_name,
         }
     }
 
@@ -65,8 +65,8 @@ impl ConditionalEscrow {
         }
     }
 
-    pub fn get_country_code(&self) -> String {
-        self.country_code.clone()
+    pub fn get_dao_name(&self) -> String {
+        self.dao_name.clone()
     }
 
     pub fn get_deposits(&self) -> Vec<(AccountId, Balance)> {
@@ -91,6 +91,10 @@ impl ConditionalEscrow {
 
     pub fn get_recipient_account_id(&self) -> AccountId {
         self.recipient_account_id.clone()
+    }
+
+    pub fn set_dao_name(&mut self, dao_name: String) {
+        self.dao_name = dao_name;
     }
 
     pub fn is_deposit_allowed(&self) -> bool {
@@ -171,7 +175,7 @@ impl ConditionalEscrow {
         // @TODO charge a fee here (1.5% initially?) when a property is sold by our contract
 
         ext_dao_factory::create_dao(
-            self.country_code.clone(),
+            self.dao_name.clone(),
             self.deposits.to_vec(),
             recipient_contract_id.clone(),
             total_funds,
@@ -241,7 +245,7 @@ mod tests {
             expires_at,
             funding_amount_limit,
             accounts(3),
-            "gt".to_string(),
+            "dao1".to_string(),
         );
 
         contract
@@ -258,15 +262,30 @@ mod tests {
     }
 
     #[test]
-    fn test_get_country_code() {
+    fn test_get_dao_name() {
         let expires_at = add_expires_at_nanos(100);
 
         let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
 
         assert_eq!(
-            "gt",
-            contract.get_country_code(),
-            "Country Code should be gt"
+            contract.get_dao_name(),
+            "dao1",
+            "Dao Name should be dao1"
+        );
+    }
+
+    #[test]
+    fn test_set_dao_name() {
+        let expires_at = add_expires_at_nanos(100);
+
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        contract.set_dao_name("mydao".to_string());
+
+        assert_eq!(
+            contract.get_dao_name(),
+            "mydao",
+            "Dao Name should be mydao"
         );
     }
 

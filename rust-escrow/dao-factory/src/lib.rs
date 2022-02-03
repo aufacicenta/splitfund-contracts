@@ -17,14 +17,14 @@ pub trait ExtDaoFactory {
 // define methods we'll use as callbacks on our contract
 #[ext_contract(ext_self)]
 pub trait MyContract {
-    fn on_create_callback(&mut self, country_code: String, daos_by_country: u128, predecessor_account_id: AccountId, attached_deposit: u128) -> bool;
+    fn on_create_callback(&mut self, dao_name: String, predecessor_account_id: AccountId, attached_deposit: u128) -> bool;
 }
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct DaoFactory {
-    daos_by_country_count: UnorderedMap<String, u128>, // Country code and sequential number
-    dao_factory_account: AccountId,
+    dao_index: UnorderedMap<AccountId, AccountId>, // Escrow Account and Dao Account
+    dao_factory_account: AccountId
 }
 
 impl Default for DaoFactory {
@@ -39,15 +39,15 @@ impl DaoFactory {
     pub fn new(dao_factory_account: AccountId) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized");
         Self {
-            daos_by_country_count: UnorderedMap::new(b"r".to_vec()),
+            dao_index: UnorderedMap::new(b"r".to_vec()),
             dao_factory_account,
         }
     }
 
-    pub fn get_daos_by_country_count(&self, country_code: String) -> u128 {
-        match self.daos_by_country_count.get(&country_code) {
-            Some(count) => count,
-            None => 0,
+    pub fn get_dao_by_escrow_account(&self, account: AccountId) -> String {
+        match self.dao_index.get(&account) {
+            Some(account_id) => account_id.to_string(),
+            None => "".to_string(),
         }
     }
 
@@ -69,14 +69,10 @@ impl DaoFactory {
     #[payable]
     pub fn create_dao(
         &mut self,
-        country_code: String,
+        dao_name: String,
         deposits: Vec<(AccountId, Balance)>,
     ) -> Promise {
-        let mut daos_by_country = self.get_daos_by_country_count(country_code.clone());
-        daos_by_country = daos_by_country.wrapping_add(1);
-
         let deposit_accounts = self.get_deposit_accounts(deposits);
-        let dao_name = format!("ce_{}_{}", country_code.clone(), daos_by_country);
         let args = self.get_dao_config(dao_name.clone(), deposit_accounts);
 
         ext_dao_factory::create(
@@ -87,8 +83,7 @@ impl DaoFactory {
             GAS_FOR_CREATE,
         )
         .then(ext_self::on_create_callback(
-            country_code,
-            daos_by_country,
+            dao_name.clone(),
             env::predecessor_account_id(),
             env::attached_deposit(),
             env::current_account_id(),
@@ -100,8 +95,7 @@ impl DaoFactory {
     #[private]
     pub fn on_create_callback(
         &mut self, 
-        country_code: String, 
-        daos_by_country: u128,
+        dao_name: String, 
         predecessor_account_id: AccountId, 
         attached_deposit: u128
     ) -> bool {
@@ -112,8 +106,9 @@ impl DaoFactory {
                 let res = String::from_utf8_lossy(&result);
 
                 if res == "true" {
-                    self.daos_by_country_count
-                        .insert(&(country_code), &(daos_by_country));
+                    let dao_account_id: AccountId = format!("{}.{}", dao_name, env::current_account_id()).parse().unwrap();
+                    self.dao_index
+                        .insert(&predecessor_account_id, &dao_account_id);
 
                     return true;
                 }
@@ -163,9 +158,9 @@ mod tests {
         let contract = get_contract();
 
         assert_eq!(
-            contract.get_daos_by_country_count("gt".to_string()), 
-            0,
-            "DAOs by GT should be 0"
+            contract.get_dao_by_escrow_account(bob()), 
+            "",
+            "DAO's Bob should be empty"
         );
     }
 
@@ -208,8 +203,12 @@ mod tests {
             vec![PromiseResult::Successful("true".to_string().into_bytes())],
         );
 
-        contract.on_create_callback(country_code.clone(), 1);
-        assert_eq!(contract.get_daos_by_country_count(country_code.clone()), 1, "DAOs by GT should be 1");
+        let dao_name = "dao1".to_string();
+        let escrow_account_id: AccountId = "ce1".parse().unwrap();
+        let dao_account_id = format!("{}.{}", dao_name.clone(), env::predecessor_account_id());
+
+        contract.on_create_callback(dao_name.clone(), escrow_account_id.clone(), 1);
+        assert_eq!(contract.get_dao_by_escrow_account(escrow_account_id.clone()), dao_account_id, "A DAO should be found");
 
         // Second DAO
         contract.create_dao(country_code.clone(), vec![(bob(), 1000)]);
@@ -222,8 +221,12 @@ mod tests {
             vec![PromiseResult::Successful("true".to_string().into_bytes())],
         );
 
-        contract.on_create_callback(country_code.clone(), 2);
-        assert_eq!(contract.get_daos_by_country_count(country_code.clone()), 2, "DAOs by GT should be 2");
+        let dao_name = "dao2".to_string();
+        let escrow_account_id: AccountId = "ce2".parse().unwrap();
+        let dao_account_id = format!("{}.{}", dao_name.clone(), env::predecessor_account_id());
+
+        contract.on_create_callback(dao_name.clone(), escrow_account_id.clone(), 1);
+        assert_eq!(contract.get_dao_by_escrow_account(escrow_account_id.clone()), dao_account_id, "A DAO should be found");
     }
 
     #[test]
@@ -243,8 +246,10 @@ mod tests {
             vec![PromiseResult::Successful("false".to_string().into_bytes())],
         );
 
-        contract.on_create_callback(country_code.clone(), 1);
+        let dao_name = "dao1".to_string();
+        let escrow_account_id: AccountId = "ce1".parse().unwrap();
 
-        assert_eq!(contract.get_daos_by_country_count(country_code), 0, "DAOs by GT should be 0");
+        contract.on_create_callback(dao_name.clone(), escrow_account_id.clone(), 1);
+        assert_eq!(contract.get_dao_by_escrow_account(escrow_account_id.clone()), "", "No DAO should be found");
     }
 }
