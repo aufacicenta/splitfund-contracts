@@ -1,21 +1,22 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
 use near_sdk::{env, ext_contract, log, near_bindgen, Gas};
-use near_sdk::{AccountId, Balance, Promise};
+use near_sdk::{AccountId, Balance, Promise, PromiseResult};
 
 /// Amount of gas
 pub const GAS_FOR_DELEGATE: Gas = Gas(120_000_000_000_000);
+pub const GAS_FOR_DELEGATE_CALLBACK: Gas = Gas(2_000_000_000_000);
 
 // define the methods we'll use on the other contract
 #[ext_contract(ext_dao_factory)]
 pub trait ExtDaoFactory {
-    fn create_dao(&mut self, country_code: String, deposits: Vec<(AccountId, Balance)>);
+    fn create_dao(&mut self, dao_name: String, deposits: Vec<(AccountId, Balance)>);
 }
 
 // define methods we'll use as callbacks on our contract
 #[ext_contract(ext_self)]
 pub trait MyContract {
-    fn on_create_dao_callback(&self) -> bool;
+    fn on_create_dao_callback(&mut self) -> bool;
 }
 
 #[near_bindgen]
@@ -27,7 +28,6 @@ pub struct ConditionalEscrow {
     funding_amount_limit: u128,
     unpaid_funding_amount: u128,
     recipient_account_id: AccountId,
-    country_code: String,
 }
 
 impl Default for ConditionalEscrow {
@@ -43,7 +43,6 @@ impl ConditionalEscrow {
         expires_at: u64,
         funding_amount_limit: u128,
         recipient_account_id: AccountId,
-        country_code: String,
     ) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized");
         Self {
@@ -53,7 +52,6 @@ impl ConditionalEscrow {
             unpaid_funding_amount: funding_amount_limit,
             expires_at,
             recipient_account_id,
-            country_code,
         }
     }
 
@@ -62,10 +60,6 @@ impl ConditionalEscrow {
             Some(deposit) => deposit,
             None => 0,
         }
-    }
-
-    pub fn get_country_code(&self) -> String {
-        self.country_code.clone()
     }
 
     pub fn get_deposits(&self) -> Vec<(AccountId, Balance)> {
@@ -109,7 +103,10 @@ impl ConditionalEscrow {
         );
 
         assert!(self.is_deposit_allowed(), "ERR_DEPOSIT_NOT_ALLOWED");
-        assert!(env::attached_deposit() <= self.get_unpaid_funding_amount(), "ERR_DEPOSIT_NOT_ALLOWED");
+        assert!(
+            env::attached_deposit() <= self.get_unpaid_funding_amount(),
+            "ERR_DEPOSIT_NOT_ALLOWED"
+        );
 
         let amount = env::attached_deposit();
         let payee = env::signer_account_id();
@@ -155,7 +152,7 @@ impl ConditionalEscrow {
     }
 
     #[payable]
-    pub fn delegate_funds(&mut self) {
+    pub fn delegate_funds(&mut self, dao_name: String) -> Promise {
         assert!(
             !(self.is_deposit_allowed() || self.is_withdrawal_allowed()),
             "ERR_DELEGATE_NOT_ALLOWED"
@@ -164,24 +161,41 @@ impl ConditionalEscrow {
         let recipient_contract_id = self.get_recipient_account_id();
         let total_funds = self.get_total_funds();
 
-        // Create Dao
+        // @TODO charge a fee here (1.5% initially?) when a property is sold by our contract
+
         ext_dao_factory::create_dao(
-            self.country_code.clone(),     // country_code
-            self.deposits.to_vec(),        // deposits
-            recipient_contract_id.clone(), // contract ID
-            total_funds,                   // funds
-            GAS_FOR_DELEGATE,              // gas
-        );
-
-        self.total_funds = 0;
-
-        log!(
-            "Delegating {} NEAR tokens to {}. — Total funds held after call: {}",
+            dao_name.clone(),
+            self.deposits.to_vec(),
+            recipient_contract_id.clone(),
             total_funds,
-            recipient_contract_id,
-            self.get_total_funds()
-        );
+            GAS_FOR_DELEGATE,
+        )
+        .then(ext_self::on_create_dao_callback(
+            env::current_account_id(),
+            0,
+            GAS_FOR_DELEGATE_CALLBACK,
+        ))
+
         // @TODO emit delegate_funds event
+    }
+
+    #[private]
+    pub fn on_create_dao_callback(&mut self) -> bool {
+        assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
+
+        match env::promise_result(0) {
+            PromiseResult::Successful(result) => {
+                let res = String::from_utf8_lossy(&result);
+
+                if res == "true" {
+                    self.total_funds = 0;
+                    return true;
+                }
+
+                panic!("ERR_CREATE_DAO_UNSUCCESSFUL");
+            }
+            _ => panic!("ERR_CREATE_DAO_UNSUCCESSFUL"),
+        }
     }
 
     fn has_contract_expired(&self) -> bool {
@@ -199,7 +213,7 @@ mod tests {
     use chrono::Utc;
     use near_sdk::test_utils::test_env::{alice, bob, carol};
     use near_sdk::test_utils::{accounts, VMContextBuilder};
-    use near_sdk::testing_env;
+    use near_sdk::{testing_env, PromiseResult};
 
     const ATTACHED_DEPOSIT: Balance = 8_540_000_000_000_000_000_000;
     const MIN_FUNDING_AMOUNT: u128 = 1_000_000_000_000_000_000_000_000;
@@ -216,12 +230,7 @@ mod tests {
     }
 
     fn setup_contract(expires_at: u64, funding_amount_limit: u128) -> ConditionalEscrow {
-        let contract = ConditionalEscrow::new(
-            expires_at,
-            funding_amount_limit,
-            accounts(3),
-            "gt".to_string(),
-        );
+        let contract = ConditionalEscrow::new(expires_at, funding_amount_limit, accounts(3));
 
         contract
     }
@@ -234,19 +243,6 @@ mod tests {
     fn substract_expires_at_nanos(offset: u32) -> u64 {
         let now = Utc::now().timestamp_subsec_nanos();
         (now - offset).into()
-    }
-
-    #[test]
-    fn test_get_country_code() {
-        let expires_at = add_expires_at_nanos(100);
-
-        let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        assert_eq!(
-            "gt",
-            contract.get_country_code(),
-            "Country Code should be gt"
-        );
     }
 
     #[test]
@@ -514,7 +510,7 @@ mod tests {
             "Withdrawal should not be allowed"
         );
 
-        contract.delegate_funds();
+        contract.delegate_funds("dao1".to_string());
     }
 
     #[test]
@@ -549,7 +545,121 @@ mod tests {
             "Withdrawal should be allowed"
         );
 
-        contract.delegate_funds();
+        contract.delegate_funds("dao1".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_DELEGATE_NOT_ALLOWED")]
+    fn test_should_not_delegate_funds_if_already_delegated() {
+        let mut context = setup_context();
+
+        let expires_at = add_expires_at_nanos(100);
+
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        testing_env!(context
+            .signer_account_id(bob())
+            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
+            .build());
+
+        contract.deposit();
+
+        testing_env!(context
+            .signer_account_id(carol())
+            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
+            .build());
+
+        contract.deposit();
+
+        testing_env!(context
+            .block_timestamp((expires_at + 200).try_into().unwrap())
+            .build());
+
+        assert_eq!(
+            false,
+            contract.is_deposit_allowed(),
+            "Deposit should not be allowed"
+        );
+
+        assert_eq!(
+            false,
+            contract.is_withdrawal_allowed(),
+            "Withdrawal should not be allowed"
+        );
+
+        contract.delegate_funds("dao1".to_string());
+
+        testing_env!(
+            context.build(),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Successful("true".to_string().into_bytes())],
+        );
+
+        contract.on_create_dao_callback();
+
+        assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
+
+        contract.delegate_funds("dao1".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_CREATE_DAO_UNSUCCESSFUL")]
+    fn test_should_not_delegate_funds_if_create_dao_fails() {
+        let mut context = setup_context();
+
+        let expires_at = add_expires_at_nanos(100);
+
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        testing_env!(context
+            .signer_account_id(bob())
+            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
+            .build());
+
+        contract.deposit();
+
+        testing_env!(context
+            .signer_account_id(carol())
+            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
+            .build());
+
+        contract.deposit();
+
+        testing_env!(context
+            .block_timestamp((expires_at + 200).try_into().unwrap())
+            .build());
+
+        assert_eq!(
+            false,
+            contract.is_deposit_allowed(),
+            "Deposit should not be allowed"
+        );
+
+        assert_eq!(
+            false,
+            contract.is_withdrawal_allowed(),
+            "Withdrawal should not be allowed"
+        );
+
+        contract.delegate_funds("dao1".to_string());
+
+        testing_env!(
+            context.build(),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Successful("false".to_string().into_bytes())],
+        );
+
+        contract.on_create_dao_callback();
+
+        assert_eq!(
+            MIN_FUNDING_AMOUNT,
+            contract.get_total_funds(),
+            "Total funds should be MIN_FUNDING_AMOUNT"
+        );
     }
 
     #[test]
@@ -590,7 +700,17 @@ mod tests {
             "Withdrawal should not be allowed"
         );
 
-        contract.delegate_funds();
+        contract.delegate_funds("dao1".to_string());
+
+        testing_env!(
+            context.build(),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Successful("true".to_string().into_bytes())],
+        );
+
+        contract.on_create_dao_callback();
 
         assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
 
