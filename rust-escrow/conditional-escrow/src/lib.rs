@@ -28,7 +28,6 @@ pub struct ConditionalEscrow {
     funding_amount_limit: u128,
     unpaid_funding_amount: u128,
     recipient_account_id: AccountId,
-    dao_name: String,
 }
 
 impl Default for ConditionalEscrow {
@@ -44,7 +43,6 @@ impl ConditionalEscrow {
         expires_at: u64,
         funding_amount_limit: u128,
         recipient_account_id: AccountId,
-        dao_name: String,
     ) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized");
         Self {
@@ -54,7 +52,6 @@ impl ConditionalEscrow {
             unpaid_funding_amount: funding_amount_limit,
             expires_at,
             recipient_account_id,
-            dao_name,
         }
     }
 
@@ -63,10 +60,6 @@ impl ConditionalEscrow {
             Some(deposit) => deposit,
             None => 0,
         }
-    }
-
-    pub fn get_dao_name(&self) -> String {
-        self.dao_name.clone()
     }
 
     pub fn get_deposits(&self) -> Vec<(AccountId, Balance)> {
@@ -91,10 +84,6 @@ impl ConditionalEscrow {
 
     pub fn get_recipient_account_id(&self) -> AccountId {
         self.recipient_account_id.clone()
-    }
-
-    pub fn set_dao_name(&mut self, dao_name: String) {
-        self.dao_name = dao_name;
     }
 
     pub fn is_deposit_allowed(&self) -> bool {
@@ -163,7 +152,7 @@ impl ConditionalEscrow {
     }
 
     #[payable]
-    pub fn delegate_funds(&mut self) -> Promise {
+    pub fn delegate_funds(&mut self, dao_name: String) -> Promise {
         assert!(
             !(self.is_deposit_allowed() || self.is_withdrawal_allowed()),
             "ERR_DELEGATE_NOT_ALLOWED"
@@ -175,7 +164,7 @@ impl ConditionalEscrow {
         // @TODO charge a fee here (1.5% initially?) when a property is sold by our contract
 
         ext_dao_factory::create_dao(
-            self.dao_name.clone(),
+            dao_name.clone(),
             self.deposits.to_vec(),
             recipient_contract_id.clone(),
             total_funds,
@@ -245,7 +234,6 @@ mod tests {
             expires_at,
             funding_amount_limit,
             accounts(3),
-            "dao1".to_string(),
         );
 
         contract
@@ -259,34 +247,6 @@ mod tests {
     fn substract_expires_at_nanos(offset: u32) -> u64 {
         let now = Utc::now().timestamp_subsec_nanos();
         (now - offset).into()
-    }
-
-    #[test]
-    fn test_get_dao_name() {
-        let expires_at = add_expires_at_nanos(100);
-
-        let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        assert_eq!(
-            contract.get_dao_name(),
-            "dao1",
-            "Dao Name should be dao1"
-        );
-    }
-
-    #[test]
-    fn test_set_dao_name() {
-        let expires_at = add_expires_at_nanos(100);
-
-        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        contract.set_dao_name("mydao".to_string());
-
-        assert_eq!(
-            contract.get_dao_name(),
-            "mydao",
-            "Dao Name should be mydao"
-        );
     }
 
     #[test]
@@ -554,7 +514,7 @@ mod tests {
             "Withdrawal should not be allowed"
         );
 
-        contract.delegate_funds();
+        contract.delegate_funds("dao1".to_string());
     }
 
     #[test]
@@ -589,7 +549,7 @@ mod tests {
             "Withdrawal should be allowed"
         );
 
-        contract.delegate_funds();
+        contract.delegate_funds("dao1".to_string());
     }
 
     #[test]
@@ -631,7 +591,7 @@ mod tests {
             "Withdrawal should not be allowed"
         );
 
-        contract.delegate_funds();
+        contract.delegate_funds("dao1".to_string());
 
         testing_env!(
             context.build(),
@@ -645,7 +605,7 @@ mod tests {
 
         assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
 
-        contract.delegate_funds();
+        contract.delegate_funds("dao1".to_string());
     }
 
     #[test]
@@ -686,7 +646,7 @@ mod tests {
             "Withdrawal should not be allowed"
         );
 
-        contract.delegate_funds();
+        contract.delegate_funds("dao1".to_string());
 
         testing_env!(
             context.build(),
@@ -739,7 +699,7 @@ mod tests {
             "Withdrawal should not be allowed"
         );
 
-        contract.delegate_funds();
+        contract.delegate_funds("dao1".to_string());
 
         testing_env!(
             context.build(),
