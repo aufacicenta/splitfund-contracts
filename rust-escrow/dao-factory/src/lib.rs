@@ -17,14 +17,19 @@ pub trait ExtDaoFactory {
 // define methods we'll use as callbacks on our contract
 #[ext_contract(ext_self)]
 pub trait MyContract {
-    fn on_create_callback(&mut self, dao_name: String, predecessor_account_id: AccountId, attached_deposit: u128) -> bool;
+    fn on_create_callback(
+        &mut self,
+        dao_name: String,
+        predecessor_account_id: AccountId,
+        attached_deposit: u128,
+    ) -> bool;
 }
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct DaoFactory {
     dao_index: UnorderedMap<AccountId, AccountId>, // Escrow Account and Dao Account
-    dao_factory_account: AccountId
+    dao_factory_account: AccountId,
 }
 
 impl Default for DaoFactory {
@@ -67,11 +72,7 @@ impl DaoFactory {
     }
 
     #[payable]
-    pub fn create_dao(
-        &mut self,
-        dao_name: String,
-        deposits: Vec<(AccountId, Balance)>,
-    ) -> Promise {
+    pub fn create_dao(&mut self, dao_name: String, deposits: Vec<(AccountId, Balance)>) -> Promise {
         let deposit_accounts = self.get_deposit_accounts(deposits);
         let args = self.get_dao_config(dao_name.clone(), deposit_accounts);
 
@@ -94,10 +95,10 @@ impl DaoFactory {
 
     #[private]
     pub fn on_create_callback(
-        &mut self, 
-        dao_name: String, 
-        predecessor_account_id: AccountId, 
-        attached_deposit: u128
+        &mut self,
+        dao_name: String,
+        predecessor_account_id: AccountId,
+        attached_deposit: u128,
     ) -> bool {
         assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
 
@@ -106,7 +107,10 @@ impl DaoFactory {
                 let res = String::from_utf8_lossy(&result);
 
                 if res == "true" {
-                    let dao_account_id: AccountId = format!("{}.{}", dao_name, env::current_account_id()).parse().unwrap();
+                    let dao_account_id: AccountId =
+                        format!("{}.{}", dao_name, env::current_account_id())
+                            .parse()
+                            .unwrap();
                     self.dao_index
                         .insert(&predecessor_account_id, &dao_account_id);
 
@@ -115,9 +119,9 @@ impl DaoFactory {
 
                 Promise::new(predecessor_account_id).transfer(attached_deposit);
 
-                false
+                panic!("ERR_CREATE_DAO_UNSUCCESSFUL");
             }
-            _ => false,
+            _ => panic!("ERR_CREATE_DAO_UNSUCCESSFUL"),
         }
     }
 }
@@ -158,7 +162,7 @@ mod tests {
         let contract = get_contract();
 
         assert_eq!(
-            contract.get_dao_by_escrow_account(bob()), 
+            contract.get_dao_by_escrow_account(bob()),
             "",
             "DAO's Bob should be empty"
         );
@@ -194,7 +198,7 @@ mod tests {
 
         // First DAO
         contract.create_dao(country_code.clone(), vec![]);
-        
+
         testing_env!(
             context.build(),
             near_sdk::VMConfig::test(),
@@ -208,7 +212,11 @@ mod tests {
         let dao_account_id = format!("{}.{}", dao_name.clone(), env::predecessor_account_id());
 
         contract.on_create_callback(dao_name.clone(), escrow_account_id.clone(), 1);
-        assert_eq!(contract.get_dao_by_escrow_account(escrow_account_id.clone()), dao_account_id, "A DAO should be found");
+        assert_eq!(
+            contract.get_dao_by_escrow_account(escrow_account_id.clone()),
+            dao_account_id,
+            "A DAO should be found"
+        );
 
         // Second DAO
         contract.create_dao(country_code.clone(), vec![(bob(), 1000)]);
@@ -226,10 +234,15 @@ mod tests {
         let dao_account_id = format!("{}.{}", dao_name.clone(), env::predecessor_account_id());
 
         contract.on_create_callback(dao_name.clone(), escrow_account_id.clone(), 1);
-        assert_eq!(contract.get_dao_by_escrow_account(escrow_account_id.clone()), dao_account_id, "A DAO should be found");
+        assert_eq!(
+            contract.get_dao_by_escrow_account(escrow_account_id.clone()),
+            dao_account_id,
+            "A DAO should be found"
+        );
     }
 
     #[test]
+    #[should_panic(expected = "ERR_CREATE_DAO_UNSUCCESSFUL")]
     fn test_create_dao_fail() {
         let context = get_context();
         let mut contract = get_contract();
@@ -250,6 +263,10 @@ mod tests {
         let escrow_account_id: AccountId = "ce1".parse().unwrap();
 
         contract.on_create_callback(dao_name.clone(), escrow_account_id.clone(), 1);
-        assert_eq!(contract.get_dao_by_escrow_account(escrow_account_id.clone()), "", "No DAO should be found");
+        assert_eq!(
+            contract.get_dao_by_escrow_account(escrow_account_id.clone()),
+            "",
+            "No DAO should be found"
+        );
     }
 }
