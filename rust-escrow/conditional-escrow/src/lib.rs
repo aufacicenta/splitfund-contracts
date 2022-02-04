@@ -192,9 +192,9 @@ impl ConditionalEscrow {
                     return true;
                 }
 
-                false
+                panic!("ERR_CREATE_DAO_UNSUCCESSFUL");
             }
-            _ => false,
+            _ => panic!("ERR_CREATE_DAO_UNSUCCESSFUL"),
         }
     }
 
@@ -230,11 +230,7 @@ mod tests {
     }
 
     fn setup_contract(expires_at: u64, funding_amount_limit: u128) -> ConditionalEscrow {
-        let contract = ConditionalEscrow::new(
-            expires_at,
-            funding_amount_limit,
-            accounts(3),
-        );
+        let contract = ConditionalEscrow::new(expires_at, funding_amount_limit, accounts(3));
 
         contract
     }
@@ -609,6 +605,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "ERR_CREATE_DAO_UNSUCCESSFUL")]
     fn test_should_not_delegate_funds_if_create_dao_fails() {
         let mut context = setup_context();
 
@@ -658,7 +655,11 @@ mod tests {
 
         contract.on_create_dao_callback();
 
-        assert_eq!(MIN_FUNDING_AMOUNT, contract.get_total_funds(), "Total funds should be MIN_FUNDING_AMOUNT");
+        assert_eq!(
+            MIN_FUNDING_AMOUNT,
+            contract.get_total_funds(),
+            "Total funds should be MIN_FUNDING_AMOUNT"
+        );
     }
 
     #[test]
