@@ -45,6 +45,10 @@ impl Ft {
         self.max_supply.into()
     }
 
+    pub fn ft_escrow_account_id(&self) -> AccountId {
+        self.escrow_account_id.clone()
+    }
+
     pub fn claim(&mut self, account_id: AccountId) -> Promise {        
         if self.token.accounts.get(&account_id).is_some() {
             env::panic_str("The account has already claimed tokens!");
@@ -97,7 +101,7 @@ impl Ft {
                 self.token.internal_register_account(&account_id);
                 self.token.internal_deposit(&account_id, amount);
             },
-            _ => env::panic_str("Error"),
+            _ => env::panic_str("Error calling escrow contract"),
         }
     }
 }
@@ -119,7 +123,19 @@ mod tests {
 
     use super::*;
 
-    const TOTAL_SUPPLY: Balance = 1_000_000_000_000_000;
+    const MAX_SUPPLY: Balance = 1_000_000_000_000_000;
+
+    fn get_metadata() -> FungibleTokenMetadata {
+        FungibleTokenMetadata {
+            spec: "ft-1.0.0".to_string(),
+            name: "Example Token Name".to_string(),
+            symbol: "EXLT".to_string(),
+            icon : None,
+            reference: None,
+            reference_hash: None,
+            decimals: 8,
+        }
+    }
 
     fn get_context(predecessor_account_id: AccountId) -> VMContextBuilder {
         let mut builder = VMContextBuilder::new();
@@ -134,19 +150,12 @@ mod tests {
     fn test_new() {
         let mut context = get_context(accounts(1));
         testing_env!(context.build());
-        let metadata = FungibleTokenMetadata {
-            spec: "ft-1.0.0".to_string(),
-            name: "Example Token Name".to_string(),
-            symbol: "EXLT".to_string(),
-            icon : None,
-            reference: None,
-            reference_hash: None,
-            decimals: 8,
-        };
-        let contract = Contract::new(accounts(1).into(), TOTAL_SUPPLY.into(), metadata);
+        let contract = Ft::new(MAX_SUPPLY.into(), accounts(1).into(), get_metadata());
         testing_env!(context.is_view(true).build());
-        assert_eq!(contract.ft_total_supply().0, TOTAL_SUPPLY);
-        assert_eq!(contract.ft_balance_of(accounts(1)).0, TOTAL_SUPPLY);
+
+        assert_eq!(contract.ft_max_supply().0, MAX_SUPPLY);
+        assert_eq!(contract.ft_total_supply().0, 0);
+        assert_eq!(contract.ft_balance_of(accounts(1)).0, 0);
     }
 
     #[test]
@@ -154,46 +163,138 @@ mod tests {
     fn test_default() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
-        let _contract = Contract::default();
+        let _contract = Ft::default();
     }
 
     #[test]
-    fn test_transfer() {
-        let mut context = get_context(accounts(2));
+    fn test_ft_max_supply() {
+        let context = get_context(accounts(1));
         testing_env!(context.build());
-        let metadata = FungibleTokenMetadata {
-            spec: "ft-1.0.0".to_string(),
-            name: "Example Token Name".to_string(),
-            symbol: "EXLT".to_string(),
-            icon : None,
-            reference: None,
-            reference_hash: None,
-            decimals: 8,
-        };
-        let mut contract = Contract::new(accounts(2).into(), TOTAL_SUPPLY.into(), metadata);
-        testing_env!(context
-            .storage_usage(env::storage_usage())
-            .attached_deposit(contract.storage_balance_bounds().min.into())
-            .predecessor_account_id(accounts(1))
-            .build());
-        // Paying for account registration, aka storage deposit
-        contract.storage_deposit(None, None);
+        let contract = Ft::new(MAX_SUPPLY.into(), accounts(1).into(), get_metadata());
 
-        testing_env!(context
-            .storage_usage(env::storage_usage())
-            .attached_deposit(1)
-            .predecessor_account_id(accounts(2))
-            .build());
-        let transfer_amount = TOTAL_SUPPLY / 3;
-        contract.ft_transfer(accounts(1), transfer_amount.into(), None);
+        assert_eq!(contract.ft_max_supply().0, MAX_SUPPLY);
+    }
 
-        testing_env!(context
-            .storage_usage(env::storage_usage())
-            .account_balance(env::account_balance())
-            .is_view(true)
-            .attached_deposit(0)
-            .build());
-        assert_eq!(contract.ft_balance_of(accounts(2)).0, (TOTAL_SUPPLY - transfer_amount));
-        assert_eq!(contract.ft_balance_of(accounts(1)).0, transfer_amount);
+    #[test]
+    fn test_ft_escrow_account_id() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let contract = Ft::new(MAX_SUPPLY.into(), accounts(1).into(), get_metadata());
+
+        assert_eq!(contract.ft_escrow_account_id(), accounts(1));
+    }
+
+    #[test]
+    fn test_claim() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let mut contract = Ft::new(MAX_SUPPLY.into(), accounts(1).into(), get_metadata());
+
+        // Account 2 Claim
+        contract.claim(accounts(2).into());
+
+        testing_env!(
+            context.build(),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Successful("100".to_string().into_bytes())],
+        );
+
+        contract.on_claim_callback(accounts(2).into());
+        assert_eq!(contract.ft_balance_of(accounts(2)).0, 100000000000000);
+
+        // Account 3 Claim
+        contract.claim(accounts(3).into());
+
+        testing_env!(
+            context.build(),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Successful("200".to_string().into_bytes())],
+        );
+
+        contract.on_claim_callback(accounts(3).into());
+        assert_eq!(contract.ft_balance_of(accounts(3)).0, 200000000000000);
+
+        assert_eq!(contract.ft_max_supply().0, MAX_SUPPLY);
+        assert_eq!(contract.ft_total_supply().0, 300000000000000);
+    }
+
+    #[test]
+    #[should_panic(expected = "The max supply must not be exceeded!")]
+    fn test_claim_exceed_max_supply() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let mut contract = Ft::new(MAX_SUPPLY.into(), accounts(1).into(), get_metadata());
+
+        // Account 2 Claim
+        contract.claim(accounts(2).into());
+
+        testing_env!(
+            context.build(),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Successful("1100".to_string().into_bytes())],
+        );
+
+        contract.on_claim_callback(accounts(2).into());
+    }
+
+    #[test]
+    #[should_panic(expected = "You don't have tokens to claim!")]
+    fn test_claim_not_allowed() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let mut contract = Ft::new(MAX_SUPPLY.into(), accounts(1).into(), get_metadata());
+
+        // Account 2 Claim
+        contract.claim(accounts(2).into());
+
+        testing_env!(
+            context.build(),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Successful("0".to_string().into_bytes())],
+        );
+
+        contract.on_claim_callback(accounts(2).into());
+    }
+
+    #[test]
+    #[should_panic(expected = "The account has already claimed tokens!")]
+    fn test_claim_twice() {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
+        let mut contract = Ft::new(MAX_SUPPLY.into(), accounts(1).into(), get_metadata());
+
+        // Account 2 Claim
+        contract.claim(accounts(2).into());
+
+        testing_env!(
+            context.build(),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Successful("100".to_string().into_bytes())],
+        );
+
+        contract.on_claim_callback(accounts(2).into());
+
+        // Account 2 Claim Again
+        contract.claim(accounts(2).into());
+
+        testing_env!(
+            context.build(),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Successful("100".to_string().into_bytes())],
+        );
+
+        contract.on_claim_callback(accounts(2).into());
     }
 }
