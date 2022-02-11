@@ -4,7 +4,7 @@ use near_sdk::{env, ext_contract, log, near_bindgen, Gas};
 use near_sdk::{AccountId, Balance, Promise, PromiseResult};
 
 /// Amount of gas
-pub const GAS_FOR_DELEGATE: Gas = Gas(120_000_000_000_000);
+pub const GAS_FOR_DELEGATE: Gas = Gas(200_000_000_000_000);
 pub const GAS_FOR_DELEGATE_CALLBACK: Gas = Gas(2_000_000_000_000);
 
 // define the methods we'll use on the other contract
@@ -184,16 +184,7 @@ impl ConditionalEscrow {
         assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
 
         match env::promise_result(0) {
-            PromiseResult::Successful(result) => {
-                let res = String::from_utf8_lossy(&result);
-
-                if res == "true" {
-                    self.total_funds = 0;
-                    return true;
-                }
-
-                panic!("ERR_CREATE_DAO_UNSUCCESSFUL");
-            }
+            PromiseResult::Successful(_result) => true,
             _ => panic!("ERR_CREATE_DAO_UNSUCCESSFUL"),
         }
     }

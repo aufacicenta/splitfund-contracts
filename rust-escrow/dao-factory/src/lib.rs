@@ -3,10 +3,18 @@ use near_sdk::collections::UnorderedMap;
 use near_sdk::json_types::Base64VecU8;
 use near_sdk::{env, ext_contract, near_bindgen, Gas};
 use near_sdk::{AccountId, Balance, Promise, PromiseResult};
+use near_sdk::serde_json::json;
 
-/// Amount of gas for create action
+// Fungile Token Contract
+const FT_CODE: &[u8] = include_bytes!("../../src/fungible_token.wasm");
+
+// Amount of gas used
 pub const GAS_FOR_CREATE: Gas = Gas(90_000_000_000_000);
-pub const GAS_FOR_CREATE_CALLBACK: Gas = Gas(2_000_000_000_000);
+pub const GAS_FOR_CREATE_CALLBACK: Gas = Gas(50_000_000_000_000);
+pub const GAS_FOR_CREATE_FT: Gas = Gas(10_000_000_000_000);
+
+// Amount used for FT
+pub const FT_BALANCE: Balance = 5_000_000_000_000_000_000_000_000; // 5 NEAR
 
 // define the methods we'll use on the other contract
 #[ext_contract(ext_dao_factory)]
@@ -22,7 +30,7 @@ pub trait MyContract {
         dao_name: String,
         predecessor_account_id: AccountId,
         attached_deposit: u128,
-    ) -> bool;
+    ) -> Promise;
 }
 
 #[near_bindgen]
@@ -75,17 +83,18 @@ impl DaoFactory {
     pub fn create_dao(&mut self, dao_name: String, deposits: Vec<(AccountId, Balance)>) -> Promise {
         let deposit_accounts = self.get_deposit_accounts(deposits);
         let args = self.get_dao_config(dao_name.clone(), deposit_accounts);
+        let predecessor_account_id = env::predecessor_account_id();
 
         ext_dao_factory::create(
             dao_name.to_string(),
             Base64VecU8(args),
             self.dao_factory_account.clone(),
-            env::attached_deposit(),
+            env::attached_deposit() - FT_BALANCE,
             GAS_FOR_CREATE,
         )
         .then(ext_self::on_create_callback(
             dao_name.clone(),
-            env::predecessor_account_id(),
+            predecessor_account_id,
             env::attached_deposit(),
             env::current_account_id(),
             0,
@@ -99,7 +108,7 @@ impl DaoFactory {
         dao_name: String,
         predecessor_account_id: AccountId,
         attached_deposit: u128,
-    ) -> bool {
+    ) -> Promise {
         assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
 
         match env::promise_result(0) {
@@ -114,15 +123,36 @@ impl DaoFactory {
                     self.dao_index
                         .insert(&predecessor_account_id, &dao_account_id);
 
-                    return true;
+                    return self.create_ft(dao_name.clone());
                 }
 
-                Promise::new(predecessor_account_id).transfer(attached_deposit);
-
-                panic!("ERR_CREATE_DAO_UNSUCCESSFUL");
+                return Promise::new(predecessor_account_id).transfer(attached_deposit);
             }
-            _ => panic!("ERR_CREATE_DAO_UNSUCCESSFUL"),
+            _ => Promise::new(predecessor_account_id).transfer(attached_deposit),
         }
+    }
+
+    #[payable]
+    fn create_ft(&mut self, name: String) -> Promise {
+        let account_id: AccountId = format!("{}-ft.{}", name, env::current_account_id())
+            .parse()
+            .unwrap();
+
+        let promise = Promise::new(account_id.clone())
+            .create_account()
+            .add_full_access_key(env::signer_account_pk())
+            .transfer(FT_BALANCE)
+            .deploy_contract(FT_CODE.to_vec());
+
+        promise
+            .function_call(
+                "new".to_string(),
+                json!({"owner_id": env::current_account_id(), "total_supply": "1000", "metadata": { "spec": "ft-1.0.0", "name": "Example Token Name", "symbol": "EXLT", "decimals": 8 }})
+                    .to_string()
+                    .into_bytes(),
+                0,
+                GAS_FOR_CREATE_FT,
+            )
     }
 }
 
