@@ -15,6 +15,7 @@ pub const GAS_FOR_CREATE_FT: Gas = Gas(10_000_000_000_000);
 
 // Amount used for FT
 pub const FT_BALANCE: Balance = 5_000_000_000_000_000_000_000_000; // 5 NEAR
+pub const FT_SUPPLY: Balance = 100_000;
 
 // define the methods we'll use on the other contract
 #[ext_contract(ext_dao_factory)]
@@ -147,7 +148,7 @@ impl DaoFactory {
         promise
             .function_call(
                 "new".to_string(),
-                json!({"owner_id": env::current_account_id(), "total_supply": "1000", "metadata": { "spec": "ft-1.0.0", "name": "Example Token Name", "symbol": "EXLT", "decimals": 8 }})
+                json!({"owner_id": env::current_account_id(), "total_supply": FT_SUPPLY.to_string(), "metadata": { "spec": "ft-1.0.0", "name": account_id.to_string(), "symbol": "EXLT", "decimals": 8 }})
                     .to_string()
                     .into_bytes(),
                 0,
