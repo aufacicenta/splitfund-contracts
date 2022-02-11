@@ -62,6 +62,15 @@ impl ConditionalEscrow {
         }
     }
 
+    pub fn proportion_deposit_of(&self, payee: &AccountId) -> Balance {
+        match self.deposits.get(payee) {
+            Some(deposit) => {
+                deposit * 1000 / self.funding_amount_limit
+            },
+            None => 0,
+        }
+    }
+
     pub fn get_deposits(&self) -> Vec<(AccountId, Balance)> {
         self.deposits.to_vec()
     }

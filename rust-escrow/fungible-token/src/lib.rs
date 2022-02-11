@@ -3,44 +3,110 @@ use near_contract_standards::fungible_token::metadata::{
 };
 use near_contract_standards::fungible_token::FungibleToken;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::LazyOption;
+use near_sdk::collections::{LazyOption};
 use near_sdk::json_types::{U128};
-use near_sdk::{env, near_bindgen, AccountId, PanicOnDefault, PromiseOrValue};
+use near_sdk::serde_json::{json};
+use near_sdk::{env, near_bindgen, AccountId, Gas, PanicOnDefault, Promise, PromiseOrValue, PromiseResult};
+
+// Amount of gas used
+pub const GAS_FOR_ESCROW_CALL: Gas = Gas(5_000_000_000_000);
+pub const GAS_FOR_CLAIM_CALLBACK: Gas = Gas(5_000_000_000_000);
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
-pub struct Contract {
+pub struct Ft {
+    // Max supply of the token
+    max_supply: U128,
+    escrow_account_id: AccountId,
     token: FungibleToken,
     metadata: LazyOption<FungibleTokenMetadata>,
 }
 
 #[near_bindgen]
-impl Contract {
-    /// Initializes the contract with the given total supply owned by the given `owner_id` with
-    /// the given fungible token metadata.
+impl Ft {
+    /// Initializes the contract
     #[init]
     pub fn new(
-        owner_id: AccountId,
-        total_supply: U128,
+        max_supply: U128,
+        escrow_account_id: AccountId,
         metadata: FungibleTokenMetadata,
     ) -> Self {
         assert!(!env::state_exists(), "Already initialized");
         metadata.assert_valid();
-        let mut this = Self {
+        Self {
+            max_supply,
+            escrow_account_id,
             token: FungibleToken::new(b"a".to_vec()),
             metadata: LazyOption::new(b"m".to_vec(), Some(&metadata)),
-        };
-        this.token.internal_register_account(&owner_id);
-        this.token.internal_deposit(&owner_id, total_supply.into());
-        this
+        }
+    }
+
+    pub fn ft_max_supply(&self) -> U128 {
+        self.max_supply.into()
+    }
+
+    pub fn claim(&mut self, account_id: AccountId) -> Promise {        
+        if self.token.accounts.get(&account_id).is_some() {
+            env::panic_str("The account has already claimed tokens!");
+        }
+
+        // Get balances
+        let promise = Promise::new(self.escrow_account_id.clone())
+            .function_call(
+                "proportion_deposit_of".to_string(),
+                json!({"payee": account_id.to_string()})
+                    .to_string()
+                    .into_bytes(),
+                0,
+                GAS_FOR_ESCROW_CALL,
+            );
+
+        let callback = Promise::new(env::current_account_id()) // the recipient of this ActionReceipt (&self)
+            .function_call(
+                "on_claim_callback".to_string(), // the function call will be a callback function
+                json!({"account_id": account_id.to_string()})
+                    .to_string()
+                    .into_bytes(),               // method arguments
+                0,                               // amount of yoctoNEAR to attach
+                GAS_FOR_CLAIM_CALLBACK,          // gas to attach
+            );
+
+        promise.then(callback)
+    }
+
+    #[private]
+    pub fn on_claim_callback(&mut self, account_id: AccountId) {
+        match env::promise_result(0) {
+            PromiseResult::Successful(result) => {
+                let proportion: u128 = near_sdk::serde_json::from_slice(&result).unwrap();
+
+                if proportion == 0 {
+                    env::panic_str("You don't have tokens to claim!");
+                }
+                
+                let amount = self.max_supply.0 * proportion / 1000; 
+
+                if let Some(new_total) = self.token.total_supply.checked_add(amount) {
+                    if new_total > self.max_supply.0 {
+                        env::panic_str("The max supply must not be exceeded!");
+                    }
+                } else {
+                    env::panic_str("Total supply overflow");
+                }
+                
+                self.token.internal_register_account(&account_id);
+                self.token.internal_deposit(&account_id, amount);
+            },
+            _ => env::panic_str("Error"),
+        }
     }
 }
 
-near_contract_standards::impl_fungible_token_core!(Contract, token);
-near_contract_standards::impl_fungible_token_storage!(Contract, token);
+near_contract_standards::impl_fungible_token_core!(Ft, token);
+near_contract_standards::impl_fungible_token_storage!(Ft, token);
 
 #[near_bindgen]
-impl FungibleTokenMetadataProvider for Contract {
+impl FungibleTokenMetadataProvider for Ft {
     fn ft_metadata(&self) -> FungibleTokenMetadata {
         self.metadata.get().unwrap()
     }
