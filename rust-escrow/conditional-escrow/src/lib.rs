@@ -28,6 +28,7 @@ pub struct ConditionalEscrow {
     funding_amount_limit: u128,
     unpaid_funding_amount: u128,
     recipient_account_id: AccountId,
+    metadata_url: String,
 }
 
 impl Default for ConditionalEscrow {
@@ -43,6 +44,7 @@ impl ConditionalEscrow {
         expires_at: u64,
         funding_amount_limit: u128,
         recipient_account_id: AccountId,
+        metadata_url: String,
     ) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized");
         Self {
@@ -52,6 +54,7 @@ impl ConditionalEscrow {
             unpaid_funding_amount: funding_amount_limit,
             expires_at,
             recipient_account_id,
+            metadata_url: metadata_url,
         }
     }
 
@@ -68,6 +71,10 @@ impl ConditionalEscrow {
 
     pub fn get_total_funds(&self) -> Balance {
         self.total_funds
+    }
+
+    pub fn get_metadata_url(&self) -> String {
+        self.metadata_url.clone()
     }
 
     pub fn get_expiration_date(&self) -> u64 {
@@ -230,7 +237,12 @@ mod tests {
     }
 
     fn setup_contract(expires_at: u64, funding_amount_limit: u128) -> ConditionalEscrow {
-        let contract = ConditionalEscrow::new(expires_at, funding_amount_limit, accounts(3));
+        let contract = ConditionalEscrow::new(
+            expires_at,
+            funding_amount_limit,
+            accounts(3),
+            "metadata_url.json".to_string(),
+        );
 
         contract
     }
@@ -290,6 +302,19 @@ mod tests {
             accounts(3),
             contract.get_recipient_account_id(),
             "Recipient account id should be 'danny.near'"
+        );
+    }
+
+    #[test]
+    fn test_get_metadata_url() {
+        let expires_at = add_expires_at_nanos(100);
+
+        let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        assert_eq!(
+            "metadata_url.json",
+            contract.get_metadata_url(),
+            "Contract was not initilialized with metadata_url param"
         );
     }
 

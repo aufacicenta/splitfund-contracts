@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'escrow-factory'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--manifest-path",
+                    "./rust-escrow/Cargo.toml",
+                    "--no-run",
+                    "--lib",
+                    "--package=escrow-factory"
+                ],
+            },
+        }
+    ]
+}
