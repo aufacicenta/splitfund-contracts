@@ -262,6 +262,34 @@ mod tests {
     }
 
     #[test]
+    fn test_proportion_deposit_of() {
+        let mut context = setup_context();
+
+        testing_env!(context
+            .signer_account_id(bob())
+            .attached_deposit(ATTACHED_DEPOSIT)
+            .build());
+
+        let expires_at = add_expires_at_nanos(100);
+
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        contract.deposit();
+
+        assert_eq!(
+            0,
+            contract.proportion_deposit_of(&alice()),
+            "Account deposits should be 0"
+        );
+
+        assert_eq!(
+            8,
+            contract.proportion_deposit_of(&bob()),
+            "Proportion deposit of Bob should be 8"
+        );
+    }
+
+    #[test]
     fn test_get_deposits() {
         let mut context = setup_context();
 
@@ -425,7 +453,7 @@ mod tests {
             .attached_deposit(ATTACHED_DEPOSIT)
             .build());
 
-        let expires_at = substract_expires_at_nanos(1_000_000);
+        let expires_at = substract_expires_at_nanos(5_000_000);
 
         let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
 
@@ -597,7 +625,7 @@ mod tests {
             near_sdk::VMConfig::test(),
             near_sdk::RuntimeFeesConfig::test(),
             Default::default(),
-            vec![PromiseResult::Successful("true".to_string().into_bytes())],
+            vec![PromiseResult::Successful(vec![])],
         );
 
         contract.on_create_dao_callback();
@@ -653,7 +681,7 @@ mod tests {
             near_sdk::VMConfig::test(),
             near_sdk::RuntimeFeesConfig::test(),
             Default::default(),
-            vec![PromiseResult::Successful("false".to_string().into_bytes())],
+            vec![PromiseResult::Failed],
         );
 
         contract.on_create_dao_callback();
@@ -710,7 +738,7 @@ mod tests {
             near_sdk::VMConfig::test(),
             near_sdk::RuntimeFeesConfig::test(),
             Default::default(),
-            vec![PromiseResult::Successful("true".to_string().into_bytes())],
+            vec![PromiseResult::Successful(vec![])],
         );
 
         contract.on_create_dao_callback();
