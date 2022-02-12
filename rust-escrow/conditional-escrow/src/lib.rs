@@ -193,7 +193,10 @@ impl ConditionalEscrow {
         assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
 
         match env::promise_result(0) {
-            PromiseResult::Successful(_result) => true,
+            PromiseResult::Successful(_result) => {
+                self.total_funds = 0;
+                true
+            },
             _ => panic!("ERR_CREATE_DAO_UNSUCCESSFUL"),
         }
     }
