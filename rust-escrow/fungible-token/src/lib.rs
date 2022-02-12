@@ -57,7 +57,7 @@ impl Ft {
         // Get balances
         let promise = Promise::new(self.escrow_account_id.clone())
             .function_call(
-                "proportion_deposit_of".to_string(),
+                "get_shares_of".to_string(),
                 json!({"payee": account_id.to_string()})
                     .to_string()
                     .into_bytes(),

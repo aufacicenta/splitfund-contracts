@@ -62,7 +62,7 @@ impl ConditionalEscrow {
         }
     }
 
-    pub fn proportion_deposit_of(&self, payee: &AccountId) -> Balance {
+    pub fn get_shares_of(&self, payee: &AccountId) -> Balance {
         match self.deposits.get(payee) {
             Some(deposit) => {
                 deposit * 1000 / self.funding_amount_limit
@@ -262,7 +262,7 @@ mod tests {
     }
 
     #[test]
-    fn test_proportion_deposit_of() {
+    fn test_get_shares_of() {
         let mut context = setup_context();
 
         testing_env!(context
@@ -278,13 +278,13 @@ mod tests {
 
         assert_eq!(
             0,
-            contract.proportion_deposit_of(&alice()),
+            contract.get_shares_of(&alice()),
             "Account deposits should be 0"
         );
 
         assert_eq!(
             8,
-            contract.proportion_deposit_of(&bob()),
+            contract.get_shares_of(&bob()),
             "Proportion deposit of Bob should be 8"
         );
     }
