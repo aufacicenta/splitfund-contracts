@@ -1,7 +1,7 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedSet;
 use near_sdk::json_types::{Base64VecU8, U128};
-use near_sdk::{assert_self, env, ext_contract, near_bindgen, AccountId, Gas, Promise, PublicKey};
+use near_sdk::{assert_self, env, ext_contract, near_bindgen, AccountId, Gas, Promise};
 
 const ESCROW_CODE: &[u8] = include_bytes!("./escrow.wasm");
 const CONDITIONAL_ESCROW_CODE: &[u8] = include_bytes!("./conditional_escrow.wasm");
@@ -90,24 +90,16 @@ impl EscrowFactory {
     }
 
     #[payable]
-    pub fn create_basic_escrow(
-        &mut self,
-        name: AccountId,
-        public_key: Option<PublicKey>,
-        args: Base64VecU8,
-    ) -> Promise {
+    pub fn create_basic_escrow(&mut self, name: AccountId, args: Base64VecU8) -> Promise {
         let account_id: AccountId = format!("{}.{}", name, env::current_account_id())
             .parse()
             .unwrap();
 
-        let mut promise = Promise::new(account_id.clone())
+        let promise = Promise::new(account_id.clone())
             .create_account()
-            .deploy_contract(ESCROW_CODE.to_vec())
-            .transfer(env::attached_deposit());
-
-        if let Some(key) = public_key {
-            promise = promise.add_full_access_key(key.into())
-        }
+            .add_full_access_key(env::signer_account_pk())
+            .transfer(env::attached_deposit())
+            .deploy_contract(ESCROW_CODE.to_vec());
 
         promise
             .function_call(
@@ -144,24 +136,16 @@ impl EscrowFactory {
     }
 
     #[payable]
-    pub fn create_conditional_escrow(
-        &mut self,
-        name: AccountId,
-        public_key: Option<PublicKey>,
-        args: Base64VecU8,
-    ) -> Promise {
+    pub fn create_conditional_escrow(&mut self, name: AccountId, args: Base64VecU8) -> Promise {
         let account_id: AccountId = format!("{}.{}", name, env::current_account_id())
             .parse()
             .unwrap();
 
-        let mut promise = Promise::new(account_id.clone())
+        let promise = Promise::new(account_id.clone())
             .create_account()
+            .add_full_access_key(env::signer_account_pk())
             .deploy_contract(CONDITIONAL_ESCROW_CODE.to_vec())
             .transfer(env::attached_deposit());
-
-        if let Some(key) = public_key {
-            promise = promise.add_full_access_key(key.into())
-        }
 
         promise
             .function_call(
@@ -204,12 +188,19 @@ mod tests {
     use chrono::Utc;
     use near_sdk::test_utils::test_env::alice;
     use near_sdk::test_utils::VMContextBuilder;
+    use near_sdk::PublicKey;
     use near_sdk::{testing_env, PromiseResult};
     use serde_json::json;
 
     fn setup_contract() -> (VMContextBuilder, EscrowFactory) {
         let mut context = VMContextBuilder::new();
-        testing_env!(context.current_account_id(alice()).build());
+        let pk: PublicKey = "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp"
+            .parse()
+            .unwrap();
+        testing_env!(context
+            .signer_account_pk(pk)
+            .current_account_id(alice())
+            .build());
         let factory = EscrowFactory::new();
         (context, factory)
     }
@@ -220,11 +211,6 @@ mod tests {
 
         factory.create_basic_escrow(
             "basic-escrow".parse().unwrap(),
-            Some(
-                "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp"
-                    .parse()
-                    .unwrap(),
-            ),
             "{}".as_bytes().to_vec().into(),
         );
 
@@ -260,19 +246,11 @@ mod tests {
         let (mut context, mut factory) = setup_contract();
 
         let now = Utc::now().timestamp_nanos();
-        let args = json!({ "expires_at": now, "min_funding_amount": 1_000_000_000, "recipient_account_id": "svpervnder.testnet" })
+        let args = json!({ "expires_at": now, "min_funding_amount": 1_000_000_000, "recipient_account_id": "svpervnder.testnet", "metadata_url": "metadata_url.json" })
             .to_string()
             .into_bytes().to_vec().into();
 
-        factory.create_conditional_escrow(
-            "conditional-escrow".parse().unwrap(),
-            Some(
-                "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp"
-                    .parse()
-                    .unwrap(),
-            ),
-            args,
-        );
+        factory.create_conditional_escrow("conditional-escrow".parse().unwrap(), args);
 
         testing_env!(
             context.predecessor_account_id(alice()).build(),
