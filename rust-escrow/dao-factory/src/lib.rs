@@ -31,7 +31,7 @@ pub trait MyContract {
         dao_name: String,
         predecessor_account_id: AccountId,
         attached_deposit: u128,
-    ) -> Promise;
+    );
 }
 
 #[near_bindgen]
@@ -109,7 +109,7 @@ impl DaoFactory {
         dao_name: String,
         predecessor_account_id: AccountId,
         attached_deposit: u128,
-    ) -> Promise {
+    ) {
         assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
 
         match env::promise_result(0) {
@@ -118,23 +118,27 @@ impl DaoFactory {
 
                 if res == "true" {
                     let dao_account_id: AccountId =
-                        format!("{}.{}", dao_name, env::current_account_id())
+                        format!("{}.{}", dao_name, self.dao_factory_account)
                             .parse()
                             .unwrap();
                     self.dao_index
                         .insert(&predecessor_account_id, &dao_account_id);
 
-                    return self.create_ft(dao_name.clone());
-                }
-
-                return Promise::new(predecessor_account_id).transfer(attached_deposit);
+                    self.create_ft(dao_name.clone());
+                } else{
+                    Promise::new(predecessor_account_id).transfer(attached_deposit);
+                    panic!("ERR_CREATE_DAO_UNSUCCESSFUL");
+                }                
             }
-            _ => Promise::new(predecessor_account_id).transfer(attached_deposit),
+            _ => {
+                Promise::new(predecessor_account_id).transfer(attached_deposit);
+                panic!("ERR_CREATE_DAO_UNSUCCESSFUL");
+            }
         }
     }
 
     #[payable]
-    fn create_ft(&mut self, name: String) -> Promise {
+    fn create_ft(&mut self, name: String) -> Promise {        
         let account_id: AccountId = format!("{}-ft.{}", name, env::current_account_id())
             .parse()
             .unwrap();
@@ -163,6 +167,15 @@ mod tests {
     use near_sdk::test_utils::test_env::{alice, bob};
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::{testing_env, PromiseResult};
+    use near_sdk::PublicKey;
+
+    pub const ATTACHED_DEPOSIT: Balance = 10_000_000_000_000_000_000_000_000; // 10 NEAR
+
+    fn get_signer_pk() -> PublicKey{
+        "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp"
+            .parse()
+            .unwrap()
+    }
 
     fn get_context() -> VMContextBuilder {
         let mut context = VMContextBuilder::new();
@@ -222,13 +235,19 @@ mod tests {
 
     #[test]
     fn test_create_dao() {
-        let context = get_context();
+        let mut context = get_context();
         let mut contract = get_contract();
-
-        let country_code = "gt".to_string();
+        let signer_pk = get_signer_pk();
 
         // First DAO
-        contract.create_dao(country_code.clone(), vec![]);
+        testing_env!(context
+            .signer_account_pk(signer_pk.clone())
+            .signer_account_id(bob())
+            .attached_deposit(ATTACHED_DEPOSIT)
+            .build());
+
+        let dao_name = "dao1".to_string();
+        contract.create_dao(dao_name.clone(), vec![]);
 
         testing_env!(
             context.build(),
@@ -238,19 +257,24 @@ mod tests {
             vec![PromiseResult::Successful("true".to_string().into_bytes())],
         );
 
-        let dao_name = "dao1".to_string();
-        let escrow_account_id: AccountId = "ce1".parse().unwrap();
-        let dao_account_id = format!("{}.{}", dao_name.clone(), env::predecessor_account_id());
+        let dao_account_id = format!("{}.{}", dao_name.clone(), "sputnikv2.testnet".to_string());
+        contract.on_create_callback(dao_name.clone(), env::predecessor_account_id(), ATTACHED_DEPOSIT - FT_BALANCE);
 
-        contract.on_create_callback(dao_name.clone(), escrow_account_id.clone(), 1);
         assert_eq!(
-            contract.get_dao_by_escrow_account(escrow_account_id.clone()),
+            contract.get_dao_by_escrow_account(env::predecessor_account_id()),
             dao_account_id,
             "A DAO should be found"
         );
 
         // Second DAO
-        contract.create_dao(country_code.clone(), vec![(bob(), 1000)]);
+        testing_env!(context
+            .signer_account_pk(signer_pk.clone())
+            .signer_account_id(bob())
+            .attached_deposit(ATTACHED_DEPOSIT)
+            .build());
+
+        let dao_name = "dao2".to_string();
+        contract.create_dao(dao_name.clone(), vec![(bob(), 1000)]);
 
         testing_env!(
             context.build(),
@@ -259,14 +283,12 @@ mod tests {
             Default::default(),
             vec![PromiseResult::Successful("true".to_string().into_bytes())],
         );
+        
+        let dao_account_id = format!("{}.{}", dao_name.clone(), "sputnikv2.testnet".to_string());
 
-        let dao_name = "dao2".to_string();
-        let escrow_account_id: AccountId = "ce2".parse().unwrap();
-        let dao_account_id = format!("{}.{}", dao_name.clone(), env::predecessor_account_id());
-
-        contract.on_create_callback(dao_name.clone(), escrow_account_id.clone(), 1);
+        contract.on_create_callback(dao_name.clone(), env::predecessor_account_id(), 1);
         assert_eq!(
-            contract.get_dao_by_escrow_account(escrow_account_id.clone()),
+            contract.get_dao_by_escrow_account(env::predecessor_account_id()),
             dao_account_id,
             "A DAO should be found"
         );
@@ -275,12 +297,18 @@ mod tests {
     #[test]
     #[should_panic(expected = "ERR_CREATE_DAO_UNSUCCESSFUL")]
     fn test_create_dao_fail() {
-        let context = get_context();
+        let mut context = get_context();
         let mut contract = get_contract();
+        let signer_pk = get_signer_pk();
 
-        let country_code = "gt".to_string();
-
-        contract.create_dao(country_code.clone(), vec![(bob(), 1000)]);
+        testing_env!(context
+            .signer_account_pk(signer_pk.clone())
+            .signer_account_id(bob())
+            .attached_deposit(ATTACHED_DEPOSIT)
+            .build());
+        
+        let dao_name = "dao1".to_string();
+        contract.create_dao(dao_name.clone(), vec![(bob(), 1000)]);
 
         testing_env!(
             context.build(),
@@ -290,12 +318,10 @@ mod tests {
             vec![PromiseResult::Successful("false".to_string().into_bytes())],
         );
 
-        let dao_name = "dao1".to_string();
-        let escrow_account_id: AccountId = "ce1".parse().unwrap();
+        contract.on_create_callback(dao_name.clone(), env::predecessor_account_id(), 1);
 
-        contract.on_create_callback(dao_name.clone(), escrow_account_id.clone(), 1);
         assert_eq!(
-            contract.get_dao_by_escrow_account(escrow_account_id.clone()),
+            contract.get_dao_by_escrow_account(env::predecessor_account_id()),
             "",
             "No DAO should be found"
         );
