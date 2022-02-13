@@ -33,7 +33,7 @@ impl Ft {
         escrow_account_id: AccountId,
         metadata: FungibleTokenMetadata,
     ) -> Self {
-        assert!(!env::state_exists(), "Already initialized");
+        assert!(!env::state_exists(), "ERR_ALREADY_INITIALIZED");
         metadata.assert_valid();
         Self {
             max_supply,
@@ -53,7 +53,7 @@ impl Ft {
 
     pub fn claim(&mut self) -> Promise {
         if self.token.accounts.get(&env::signer_account_id()).is_some() {
-            env::panic_str("The account has already claimed tokens!");
+            env::panic_str("ERR_ALREADY_CLAIMED_TOKENS");
         }
 
         // Get balances
@@ -84,17 +84,17 @@ impl Ft {
                 let proportion: u128 = near_sdk::serde_json::from_slice(&result).unwrap();
 
                 if proportion == 0 {
-                    env::panic_str("You don't have tokens to claim!");
+                    env::panic_str("ERR_NO_TOKENS_TO_CLAIM");
                 }
 
                 let amount = self.max_supply.0 * proportion / 1000;
 
                 if let Some(new_total) = self.token.total_supply.checked_add(amount) {
                     if new_total > self.max_supply.0 {
-                        env::panic_str("The max supply must not be exceeded!");
+                        env::panic_str("ERR_MAX_SUPPLY_EXCEEDED");
                     }
                 } else {
-                    env::panic_str("Total supply overflow");
+                    env::panic_str("ERR_TOTAL_SUPPLY_OVERFLOW");
                 }
 
                 self.token
@@ -102,7 +102,7 @@ impl Ft {
                 self.token
                     .internal_deposit(&env::signer_account_id(), amount);
             }
-            _ => env::panic_str("Error calling escrow contract"),
+            _ => env::panic_str("ERR_CALLING_ESCROW_CONTRACT"),
         }
     }
 }
@@ -226,7 +226,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "The max supply must not be exceeded!")]
+    #[should_panic(expected = "ERR_MAX_SUPPLY_EXCEEDED")]
     fn test_claim_exceed_max_supply() {
         let mut context = get_context(accounts(1));
         testing_env!(context.signer_account_id(accounts(2).into()).build());
@@ -248,7 +248,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "You don't have tokens to claim!")]
+    #[should_panic(expected = "ERR_NO_TOKENS_TO_CLAIM")]
     fn test_claim_not_allowed() {
         let mut context = get_context(accounts(1));
         testing_env!(context.signer_account_id(accounts(2).into()).build());
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "The account has already claimed tokens!")]
+    #[should_panic(expected = "ERR_ALREADY_CLAIMED_TOKENS")]
     fn test_claim_twice() {
         let mut context = get_context(accounts(1));
         testing_env!(context.signer_account_id(accounts(2).into()).build());
