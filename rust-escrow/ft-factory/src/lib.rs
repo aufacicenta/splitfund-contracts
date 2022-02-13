@@ -1,8 +1,8 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
+use near_sdk::serde_json::json;
 use near_sdk::{env, near_bindgen, Gas};
 use near_sdk::{AccountId, Balance, Promise, PromiseResult};
-use near_sdk::serde_json::json;
 
 // Fungile Token Contract
 const FT_CODE: &[u8] = include_bytes!("../../src/fungible_token.wasm");
@@ -44,7 +44,7 @@ impl FtFactory {
     }
 
     #[payable]
-    pub fn create_ft(&mut self, name: String) -> Promise {        
+    pub fn create_ft(&mut self, name: String) -> Promise {
         let ft_account_id: AccountId = format!("{}.{}", name, env::current_account_id())
             .parse()
             .unwrap();
@@ -62,26 +62,27 @@ impl FtFactory {
                 0,
                 GAS_FOR_CREATE_FT,
             );
-        
+
         let callback = Promise::new(env::current_account_id()) // the recipient of this ActionReceipt (&self)
             .function_call(
-                "on_create_ft_callback".to_string(),           // the function call will be a callback function
-                json!({"escrow_account_id": env::predecessor_account_id(), "ft_account_id": ft_account_id.to_string()})
+                "on_create_ft_callback".to_string(), // the function call will be a callback function
+                json!({"ft_account_id": ft_account_id.to_string()})
                     .to_string()
-                    .into_bytes(),                             // method arguments
-                0,                                             // amount of yoctoNEAR to attach
-                GAS_FOR_CREATE_FT_CB,                          // gas to attach
+                    .into_bytes(), // method arguments
+                0,                                   // amount of yoctoNEAR to attach
+                GAS_FOR_CREATE_FT_CB,                // gas to attach
             );
 
         promise.then(callback)
     }
 
     #[private]
-    pub fn on_create_ft_callback(&mut self, escrow_account_id: AccountId, ft_account_id: AccountId) {
+    pub fn on_create_ft_callback(&mut self, ft_account_id: AccountId) {
         match env::promise_result(0) {
             PromiseResult::Successful(_result) => {
-                self.ft_index.insert(&escrow_account_id, &ft_account_id);
-            },
+                self.ft_index
+                    .insert(&env::predecessor_account_id(), &ft_account_id);
+            }
             _ => env::panic_str("ERR_CREATE_FT_UNSUCCESSFUL"),
         }
     }
@@ -92,10 +93,10 @@ mod tests {
     use super::*;
     use near_sdk::test_utils::test_env::{alice, bob};
     use near_sdk::test_utils::VMContextBuilder;
-    use near_sdk::{testing_env, PromiseResult};
     use near_sdk::PublicKey;
+    use near_sdk::{testing_env, PromiseResult};
 
-    fn get_signer_pk() -> PublicKey{
+    fn get_signer_pk() -> PublicKey {
         "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp"
             .parse()
             .unwrap()
@@ -152,7 +153,8 @@ mod tests {
         let ft_account_id: AccountId = format!("{}.{}", ft_name.clone(), env::current_account_id())
             .parse()
             .unwrap();
-        contract.on_create_ft_callback(env::predecessor_account_id(), ft_account_id.clone());
+
+        contract.on_create_ft_callback(ft_account_id.clone());
 
         assert_eq!(
             contract.get_ft_by_escrow_account(env::predecessor_account_id()),
@@ -167,6 +169,7 @@ mod tests {
             .build());
 
         let ft_name = "ft2".to_string();
+
         contract.create_ft(ft_name.clone());
 
         testing_env!(
@@ -176,11 +179,12 @@ mod tests {
             Default::default(),
             vec![PromiseResult::Successful(vec![])],
         );
-        
+
         let ft_account_id: AccountId = format!("{}.{}", ft_name.clone(), env::current_account_id())
             .parse()
             .unwrap();
-        contract.on_create_ft_callback(env::predecessor_account_id(), ft_account_id.clone());
+
+        contract.on_create_ft_callback(ft_account_id.clone());
 
         assert_eq!(
             contract.get_ft_by_escrow_account(env::predecessor_account_id()),
@@ -200,7 +204,7 @@ mod tests {
             .signer_account_pk(signer_pk.clone())
             .signer_account_id(bob())
             .build());
-        
+
         let ft_name = "ft1".to_string();
         contract.create_ft(ft_name.clone());
 
@@ -215,7 +219,8 @@ mod tests {
         let ft_account_id: AccountId = format!("{}.{}", ft_name.clone(), env::current_account_id())
             .parse()
             .unwrap();
-        contract.on_create_ft_callback(env::predecessor_account_id(), ft_account_id.clone());
+
+        contract.on_create_ft_callback(ft_account_id.clone());
 
         assert_eq!(
             contract.get_ft_by_escrow_account(env::predecessor_account_id()),
