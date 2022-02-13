@@ -3,7 +3,7 @@ use near_sdk::collections::UnorderedMap;
 use near_sdk::json_types::Base64VecU8;
 use near_sdk::serde_json::json;
 use near_sdk::{env, near_bindgen, Gas};
-use near_sdk::{AccountId, Balance, Promise, PromiseResult};
+use near_sdk::{AccountId, Promise, PromiseResult};
 
 // Amount of gas used
 pub const GAS_FOR_CREATE_DAO: Gas = Gas(90_000_000_000_000);
@@ -40,25 +40,15 @@ impl DaoFactory {
         }
     }
 
-    fn get_dao_config(&self, name: String, accounts: String) -> Vec<u8> {
-        format!(r#"{{ "policy": {{ "roles": [ {{ "name": "Everyone", "kind": {{ "Group": [ {} ] }}, "permissions": [ "*:Finalize", "*:AddProposal", "*:VoteApprove", "*:VoteReject", "*:VoteRemove" ], "vote_policy": {{}} }}, {{ "name": "all", "kind": "Everyone", "permissions": [ "*:AddProposal" ], "vote_policy": {{}} }} ], "default_vote_policy": {{ "weight_kind": "RoleWeight", "quorum": "0", "threshold": [ 1, 2 ] }}, "proposal_bond": "100000000000000000000000", "proposal_period": "604800000000000", "bounty_bond": "100000000000000000000000", "bounty_forgiveness_period": "604800000000000" }}, "config": {{ "name": "{}", "purpose": "", "metadata": "" }} }}"#, accounts, name).into_bytes()
-    }
-
-    fn get_deposit_accounts(&self, deposits: Vec<(AccountId, Balance)>) -> String {
-        let mut accounts = format!(r#""{}""#, env::current_account_id().to_string());
-
-        for i in &deposits {
-            accounts += ", ";
-            accounts += &format!(r#""{}""#, &i.0.to_string().to_string());
-        }
-
-        accounts
+    fn get_dao_config(&self, name: String, accounts: Vec<String>) -> Vec<u8> {
+        json!({ "policy": { "roles": [ { "name": "Everyone", "kind": { "Group": accounts }, "permissions": [ "*:Finalize", "*:AddProposal", "*:VoteApprove", "*:VoteReject", "*:VoteRemove" ], "vote_policy": {} }, { "name": "all", "kind": "Everyone", "permissions": [ "*:AddProposal" ], "vote_policy": {} } ], "default_vote_policy": { "weight_kind": "RoleWeight", "quorum": "0", "threshold": [ 1, 2 ] }, "proposal_bond": "100000000000000000000000", "proposal_period": "604800000000000", "bounty_bond": "100000000000000000000000", "bounty_forgiveness_period": "604800000000000" }, "config": { "name": name, "purpose": "", "metadata": "" } })
+            .to_string()
+            .into_bytes()
     }
 
     #[payable]
-    pub fn create_dao(&mut self, dao_name: String, deposits: Vec<(AccountId, Balance)>) -> Promise {
-        let deposit_accounts = self.get_deposit_accounts(deposits);
-        let args = self.get_dao_config(dao_name.clone(), deposit_accounts);
+    pub fn create_dao(&mut self, dao_name: String, deposits: Vec<String>) -> Promise {
+        let args = self.get_dao_config(dao_name.clone(), deposits);
 
         let promise = Promise::new(self.dao_factory_account.clone()).function_call(
             "create".to_string(),
@@ -69,14 +59,14 @@ impl DaoFactory {
             GAS_FOR_CREATE_DAO,
         );
 
-        let callback = Promise::new(env::current_account_id()) // the recipient of this ActionReceipt (&self)
+        let callback = Promise::new(env::current_account_id())
             .function_call(
-                "on_create_dao_callback".to_string(), // the function call will be a callback function
+                "on_create_dao_callback".to_string(),
                 json!({"dao_name": dao_name.clone()})
                     .to_string()
-                    .into_bytes(), // method arguments
-                0,                                    // amount of yoctoNEAR to attach
-                GAS_FOR_CREATE_DAO_CB,                // gas to attach
+                    .into_bytes(),
+                0,
+                GAS_FOR_CREATE_DAO_CB,
             );
 
         promise.then(callback)
@@ -116,7 +106,7 @@ mod tests {
     use near_sdk::test_utils::test_env::{alice, bob};
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::PublicKey;
-    use near_sdk::{testing_env, PromiseResult};
+    use near_sdk::{Balance, PromiseResult, testing_env};
 
     pub const ATTACHED_DEPOSIT: Balance = 10_000_000_000_000_000_000_000_000; // 10 NEAR
 
@@ -145,8 +135,10 @@ mod tests {
         let contract = get_contract();
 
         assert_eq!(
-            contract.get_dao_config("daoname".to_string(), "poguz.testnet".to_string()),
-            format!(r#"{{ "policy": {{ "roles": [ {{ "name": "Everyone", "kind": {{ "Group": [ {} ] }}, "permissions": [ "*:Finalize", "*:AddProposal", "*:VoteApprove", "*:VoteReject", "*:VoteRemove" ], "vote_policy": {{}} }}, {{ "name": "all", "kind": "Everyone", "permissions": [ "*:AddProposal" ], "vote_policy": {{}} }} ], "default_vote_policy": {{ "weight_kind": "RoleWeight", "quorum": "0", "threshold": [ 1, 2 ] }}, "proposal_bond": "100000000000000000000000", "proposal_period": "604800000000000", "bounty_bond": "100000000000000000000000", "bounty_forgiveness_period": "604800000000000" }}, "config": {{ "name": "{}", "purpose": "", "metadata": "" }} }}"#, "poguz.testnet".to_string(), "daoname".to_string()).into_bytes()
+            contract.get_dao_config("daoname".to_string(), vec!["poguz.testnet".to_string()]),
+            json!({ "policy": { "roles": [ { "name": "Everyone", "kind": { "Group": vec!["poguz.testnet".to_string()] }, "permissions": [ "*:Finalize", "*:AddProposal", "*:VoteApprove", "*:VoteReject", "*:VoteRemove" ], "vote_policy": {} }, { "name": "all", "kind": "Everyone", "permissions": [ "*:AddProposal" ], "vote_policy": {} } ], "default_vote_policy": { "weight_kind": "RoleWeight", "quorum": "0", "threshold": [ 1, 2 ] }, "proposal_bond": "100000000000000000000000", "proposal_period": "604800000000000", "bounty_bond": "100000000000000000000000", "bounty_forgiveness_period": "604800000000000" }, "config": { "name": "daoname".to_string(), "purpose": "", "metadata": "" } })
+                .to_string()
+                .into_bytes()
         );
     }
 
@@ -158,27 +150,6 @@ mod tests {
             contract.get_dao_by_escrow_account(bob()),
             "",
             "DAO's Bob should be empty"
-        );
-    }
-
-    #[test]
-    fn test_get_deposit_accounts() {
-        let contract = get_contract();
-
-        assert_eq!(
-            contract.get_deposit_accounts(vec![]),
-            format!(r#""{}""#, alice().to_string().to_string()),
-            "The Depositor should be alice"
-        );
-
-        assert_eq!(
-            contract.get_deposit_accounts(vec![(bob(), 1000)]),
-            format!(
-                r#""{}", "{}""#,
-                alice().to_string().to_string(),
-                bob().to_string().to_string()
-            ),
-            "Depositors should be alice and bob"
         );
     }
 
@@ -223,7 +194,7 @@ mod tests {
             .build());
 
         let dao_name = "dao2".to_string();
-        contract.create_dao(dao_name.clone(), vec![(bob(), 1000)]);
+        contract.create_dao(dao_name.clone(), vec![bob().to_string()]);
 
         testing_env!(
             context.build(),
@@ -257,7 +228,7 @@ mod tests {
             .build());
 
         let dao_name = "dao1".to_string();
-        contract.create_dao(dao_name.clone(), vec![(bob(), 1000)]);
+        contract.create_dao(dao_name.clone(), vec![bob().to_string()]);
 
         testing_env!(
             context.build(),
