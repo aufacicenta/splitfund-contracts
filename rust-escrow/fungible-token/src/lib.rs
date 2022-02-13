@@ -3,10 +3,12 @@ use near_contract_standards::fungible_token::metadata::{
 };
 use near_contract_standards::fungible_token::FungibleToken;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LazyOption};
-use near_sdk::json_types::{U128};
-use near_sdk::serde_json::{json};
-use near_sdk::{env, near_bindgen, AccountId, Gas, PanicOnDefault, Promise, PromiseOrValue, PromiseResult};
+use near_sdk::collections::LazyOption;
+use near_sdk::json_types::U128;
+use near_sdk::serde_json::json;
+use near_sdk::{
+    env, near_bindgen, AccountId, Gas, PanicOnDefault, Promise, PromiseOrValue, PromiseResult,
+};
 
 // Amount of gas used
 pub const GAS_FOR_ESCROW_CALL: Gas = Gas(5_000_000_000_000);
@@ -49,28 +51,25 @@ impl Ft {
         self.escrow_account_id.clone()
     }
 
-    pub fn claim(&mut self, account_id: AccountId) -> Promise {        
-        if self.token.accounts.get(&account_id).is_some() {
+    pub fn claim(&mut self) -> Promise {
+        if self.token.accounts.get(&env::signer_account_id()).is_some() {
             env::panic_str("The account has already claimed tokens!");
         }
 
         // Get balances
-        let promise = Promise::new(self.escrow_account_id.clone())
-            .function_call(
-                "get_shares_of".to_string(),
-                json!({"payee": account_id.to_string()})
-                    .to_string()
-                    .into_bytes(),
-                0,
-                GAS_FOR_ESCROW_CALL,
-            );
+        let promise = Promise::new(self.escrow_account_id.clone()).function_call(
+            "get_shares_of".to_string(),
+            json!({"payee": env::signer_account_id().to_string()})
+                .to_string()
+                .into_bytes(),
+            0,
+            GAS_FOR_ESCROW_CALL,
+        );
 
         let callback = Promise::new(env::current_account_id()) // the recipient of this ActionReceipt (&self)
             .function_call(
                 "on_claim_callback".to_string(), // the function call will be a callback function
-                json!({"account_id": account_id.to_string()})
-                    .to_string()
-                    .into_bytes(),               // method arguments
+                vec![],                          // method arguments
                 0,                               // amount of yoctoNEAR to attach
                 GAS_FOR_CLAIM_CALLBACK,          // gas to attach
             );
@@ -79,7 +78,7 @@ impl Ft {
     }
 
     #[private]
-    pub fn on_claim_callback(&mut self, account_id: AccountId) {
+    pub fn on_claim_callback(&mut self) {
         match env::promise_result(0) {
             PromiseResult::Successful(result) => {
                 let proportion: u128 = near_sdk::serde_json::from_slice(&result).unwrap();
@@ -87,8 +86,8 @@ impl Ft {
                 if proportion == 0 {
                     env::panic_str("You don't have tokens to claim!");
                 }
-                
-                let amount = self.max_supply.0 * proportion / 1000; 
+
+                let amount = self.max_supply.0 * proportion / 1000;
 
                 if let Some(new_total) = self.token.total_supply.checked_add(amount) {
                     if new_total > self.max_supply.0 {
@@ -97,10 +96,12 @@ impl Ft {
                 } else {
                     env::panic_str("Total supply overflow");
                 }
-                
-                self.token.internal_register_account(&account_id);
-                self.token.internal_deposit(&account_id, amount);
-            },
+
+                self.token
+                    .internal_register_account(&env::signer_account_id());
+                self.token
+                    .internal_deposit(&env::signer_account_id(), amount);
+            }
             _ => env::panic_str("Error calling escrow contract"),
         }
     }
@@ -130,7 +131,7 @@ mod tests {
             spec: "ft-1.0.0".to_string(),
             name: "Example Token Name".to_string(),
             symbol: "EXLT".to_string(),
-            icon : None,
+            icon: None,
             reference: None,
             reference_hash: None,
             decimals: 8,
@@ -186,12 +187,13 @@ mod tests {
 
     #[test]
     fn test_claim() {
-        let context = get_context(accounts(1));
-        testing_env!(context.build());
+        let mut context = get_context(accounts(1));
+        testing_env!(context.signer_account_id(accounts(2).into()).build());
+
         let mut contract = Ft::new(MAX_SUPPLY.into(), accounts(1).into(), get_metadata());
 
         // Account 2 Claim
-        contract.claim(accounts(2).into());
+        contract.claim();
 
         testing_env!(
             context.build(),
@@ -201,11 +203,12 @@ mod tests {
             vec![PromiseResult::Successful("100".to_string().into_bytes())],
         );
 
-        contract.on_claim_callback(accounts(2).into());
+        contract.on_claim_callback();
         assert_eq!(contract.ft_balance_of(accounts(2)).0, 100000000000000);
 
         // Account 3 Claim
-        contract.claim(accounts(3).into());
+        testing_env!(context.signer_account_id(accounts(3).into()).build());
+        contract.claim();
 
         testing_env!(
             context.build(),
@@ -215,7 +218,7 @@ mod tests {
             vec![PromiseResult::Successful("200".to_string().into_bytes())],
         );
 
-        contract.on_claim_callback(accounts(3).into());
+        contract.on_claim_callback();
         assert_eq!(contract.ft_balance_of(accounts(3)).0, 200000000000000);
 
         assert_eq!(contract.ft_max_supply().0, MAX_SUPPLY);
@@ -225,12 +228,13 @@ mod tests {
     #[test]
     #[should_panic(expected = "The max supply must not be exceeded!")]
     fn test_claim_exceed_max_supply() {
-        let context = get_context(accounts(1));
-        testing_env!(context.build());
+        let mut context = get_context(accounts(1));
+        testing_env!(context.signer_account_id(accounts(2).into()).build());
+
         let mut contract = Ft::new(MAX_SUPPLY.into(), accounts(1).into(), get_metadata());
 
         // Account 2 Claim
-        contract.claim(accounts(2).into());
+        contract.claim();
 
         testing_env!(
             context.build(),
@@ -240,18 +244,19 @@ mod tests {
             vec![PromiseResult::Successful("1100".to_string().into_bytes())],
         );
 
-        contract.on_claim_callback(accounts(2).into());
+        contract.on_claim_callback();
     }
 
     #[test]
     #[should_panic(expected = "You don't have tokens to claim!")]
     fn test_claim_not_allowed() {
-        let context = get_context(accounts(1));
-        testing_env!(context.build());
+        let mut context = get_context(accounts(1));
+        testing_env!(context.signer_account_id(accounts(2).into()).build());
+
         let mut contract = Ft::new(MAX_SUPPLY.into(), accounts(1).into(), get_metadata());
 
         // Account 2 Claim
-        contract.claim(accounts(2).into());
+        contract.claim();
 
         testing_env!(
             context.build(),
@@ -261,18 +266,19 @@ mod tests {
             vec![PromiseResult::Successful("0".to_string().into_bytes())],
         );
 
-        contract.on_claim_callback(accounts(2).into());
+        contract.on_claim_callback();
     }
 
     #[test]
     #[should_panic(expected = "The account has already claimed tokens!")]
     fn test_claim_twice() {
-        let context = get_context(accounts(1));
-        testing_env!(context.build());
+        let mut context = get_context(accounts(1));
+        testing_env!(context.signer_account_id(accounts(2).into()).build());
+
         let mut contract = Ft::new(MAX_SUPPLY.into(), accounts(1).into(), get_metadata());
 
         // Account 2 Claim
-        contract.claim(accounts(2).into());
+        contract.claim();
 
         testing_env!(
             context.build(),
@@ -282,10 +288,10 @@ mod tests {
             vec![PromiseResult::Successful("100".to_string().into_bytes())],
         );
 
-        contract.on_claim_callback(accounts(2).into());
+        contract.on_claim_callback();
 
         // Account 2 Claim Again
-        contract.claim(accounts(2).into());
+        contract.claim();
 
         testing_env!(
             context.build(),
@@ -295,6 +301,6 @@ mod tests {
             vec![PromiseResult::Successful("100".to_string().into_bytes())],
         );
 
-        contract.on_claim_callback(accounts(2).into());
+        contract.on_claim_callback();
     }
 }
