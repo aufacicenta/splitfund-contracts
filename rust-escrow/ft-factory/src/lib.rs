@@ -56,7 +56,7 @@ impl FtFactory {
             .deploy_contract(FT_CODE.to_vec())
             .function_call(
                 "new".to_string(),
-                json!({"max_supply": FT_SUPPLY.to_string(), "escrow_account_id": env::predecessor_account_id().to_string(), "metadata": { "spec": "ft-1.0.0", "name": ft_account_id.to_string(), "symbol": "", "decimals": 8 }})
+                json!({"max_supply": FT_SUPPLY.to_string(), "escrow_account_id": env::predecessor_account_id().to_string(), "metadata": { "spec": "ft-1.0.0", "name": name.clone(), "symbol": "", "decimals": 8 }})
                     .to_string()
                     .into_bytes(),
                 0,
