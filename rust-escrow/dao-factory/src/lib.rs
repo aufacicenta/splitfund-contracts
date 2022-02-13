@@ -1,9 +1,9 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
 use near_sdk::json_types::Base64VecU8;
+use near_sdk::serde_json::json;
 use near_sdk::{env, near_bindgen, Gas};
 use near_sdk::{AccountId, Balance, Promise, PromiseResult};
-use near_sdk::serde_json::json;
 
 // Amount of gas used
 pub const GAS_FOR_CREATE_DAO: Gas = Gas(90_000_000_000_000);
@@ -60,36 +60,30 @@ impl DaoFactory {
         let deposit_accounts = self.get_deposit_accounts(deposits);
         let args = self.get_dao_config(dao_name.clone(), deposit_accounts);
 
-        let promise = Promise::new(self.dao_factory_account.clone())
-            .function_call(
-                "create".to_string(),
-                json!({"name": dao_name.clone(), "args": Base64VecU8(args) })
-                    .to_string()
-                    .into_bytes(),
-                env::attached_deposit(),
-                GAS_FOR_CREATE_DAO,
-            );
+        let promise = Promise::new(self.dao_factory_account.clone()).function_call(
+            "create".to_string(),
+            json!({"name": dao_name.clone(), "args": Base64VecU8(args) })
+                .to_string()
+                .into_bytes(),
+            env::attached_deposit(),
+            GAS_FOR_CREATE_DAO,
+        );
 
         let callback = Promise::new(env::current_account_id()) // the recipient of this ActionReceipt (&self)
             .function_call(
-                "on_create_dao_callback".to_string(),          // the function call will be a callback function
-                json!({"dao_name": dao_name.clone(), "predecessor_account_id": env::predecessor_account_id(), "attached_deposit": env::attached_deposit().to_string()})
+                "on_create_dao_callback".to_string(), // the function call will be a callback function
+                json!({"dao_name": dao_name.clone()})
                     .to_string()
-                    .into_bytes(),                             // method arguments
-                0,                                             // amount of yoctoNEAR to attach
-                GAS_FOR_CREATE_DAO_CB,                         // gas to attach
+                    .into_bytes(), // method arguments
+                0,                                    // amount of yoctoNEAR to attach
+                GAS_FOR_CREATE_DAO_CB,                // gas to attach
             );
 
         promise.then(callback)
     }
 
     #[private]
-    pub fn on_create_dao_callback(
-        &mut self,
-        dao_name: String,
-        predecessor_account_id: AccountId,
-        attached_deposit: u128,
-    ) {
+    pub fn on_create_dao_callback(&mut self, dao_name: String) {
         assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
 
         match env::promise_result(0) {
@@ -102,14 +96,14 @@ impl DaoFactory {
                             .parse()
                             .unwrap();
                     self.dao_index
-                        .insert(&predecessor_account_id, &dao_account_id);
-                } else{
-                    Promise::new(predecessor_account_id).transfer(attached_deposit);
+                        .insert(&env::predecessor_account_id(), &dao_account_id);
+                } else {
+                    Promise::new(env::predecessor_account_id()).transfer(env::attached_deposit());
                     panic!("ERR_CREATE_DAO_UNSUCCESSFUL");
-                }                
+                }
             }
             _ => {
-                Promise::new(predecessor_account_id).transfer(attached_deposit);
+                Promise::new(env::predecessor_account_id()).transfer(env::attached_deposit());
                 panic!("ERR_CREATE_DAO_UNSUCCESSFUL");
             }
         }
@@ -121,12 +115,12 @@ mod tests {
     use super::*;
     use near_sdk::test_utils::test_env::{alice, bob};
     use near_sdk::test_utils::VMContextBuilder;
-    use near_sdk::{testing_env, PromiseResult};
     use near_sdk::PublicKey;
+    use near_sdk::{testing_env, PromiseResult};
 
     pub const ATTACHED_DEPOSIT: Balance = 10_000_000_000_000_000_000_000_000; // 10 NEAR
 
-    fn get_signer_pk() -> PublicKey{
+    fn get_signer_pk() -> PublicKey {
         "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp"
             .parse()
             .unwrap()
@@ -213,7 +207,7 @@ mod tests {
         );
 
         let dao_account_id = format!("{}.{}", dao_name.clone(), "sputnikv2.testnet".to_string());
-        contract.on_create_dao_callback(dao_name.clone(), env::predecessor_account_id(), 1);
+        contract.on_create_dao_callback(dao_name.clone());
 
         assert_eq!(
             contract.get_dao_by_escrow_account(env::predecessor_account_id()),
@@ -238,10 +232,10 @@ mod tests {
             Default::default(),
             vec![PromiseResult::Successful("true".to_string().into_bytes())],
         );
-        
+
         let dao_account_id = format!("{}.{}", dao_name.clone(), "sputnikv2.testnet".to_string());
 
-        contract.on_create_dao_callback(dao_name.clone(), env::predecessor_account_id(), 1);
+        contract.on_create_dao_callback(dao_name.clone());
         assert_eq!(
             contract.get_dao_by_escrow_account(env::predecessor_account_id()),
             dao_account_id,
@@ -261,7 +255,7 @@ mod tests {
             .signer_account_id(bob())
             .attached_deposit(ATTACHED_DEPOSIT)
             .build());
-        
+
         let dao_name = "dao1".to_string();
         contract.create_dao(dao_name.clone(), vec![(bob(), 1000)]);
 
@@ -273,7 +267,7 @@ mod tests {
             vec![PromiseResult::Successful("false".to_string().into_bytes())],
         );
 
-        contract.on_create_dao_callback(dao_name.clone(), env::predecessor_account_id(), 1);
+        contract.on_create_dao_callback(dao_name.clone());
 
         assert_eq!(
             contract.get_dao_by_escrow_account(env::predecessor_account_id()),
