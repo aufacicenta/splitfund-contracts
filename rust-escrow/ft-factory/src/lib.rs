@@ -22,7 +22,7 @@ pub struct FtFactory {
 
 impl Default for FtFactory {
     fn default() -> Self {
-        env::panic_str("FtFactory should be initialized before usage")
+        env::panic_str("ERR_FTFACTORY_NOT_INITIALIZED")
     }
 }
 
@@ -30,7 +30,7 @@ impl Default for FtFactory {
 impl FtFactory {
     #[init]
     pub fn new() -> Self {
-        assert!(!env::state_exists(), "The contract is already initialized");
+        assert!(!env::state_exists(), "ERR_CONTRACT_ALREADY_INITIALIZED");
         Self {
             ft_index: UnorderedMap::new(b"r".to_vec()),
         }
