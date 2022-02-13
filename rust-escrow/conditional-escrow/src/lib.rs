@@ -215,13 +215,23 @@ impl ConditionalEscrow {
     pub fn on_delegate_callback(&mut self) -> bool {
         assert_eq!(env::promise_results_count(), 2, "ERR_CALLBACK_METHOD");
 
+        let dao_on_create;
+        let ft_on_create;
+
         match env::promise_result(0) {
             PromiseResult::Successful(_result) => {
                 self.total_funds = 0;
-                true
+                dao_on_create = true;
             },
             _ => panic!("ERR_CREATE_DAO_UNSUCCESSFUL"),
         }
+
+        match env::promise_result(1) {
+            PromiseResult::Successful(_result) => ft_on_create = true,
+            _ => panic!("ERR_CREATE_DAO_UNSUCCESSFUL"),
+        }
+
+        dao_on_create && ft_on_create
     }
 
     fn has_contract_expired(&self) -> bool {
