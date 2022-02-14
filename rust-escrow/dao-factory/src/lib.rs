@@ -63,7 +63,7 @@ impl DaoFactory {
         let callback = Promise::new(env::current_account_id())
             .function_call(
                 "on_create_dao_callback".to_string(),
-                json!({"escrow_account_id": predecessor_account_id, "dao_name": dao_name.clone(), "attached_deposit": env::attached_deposit().to_string()})
+                json!({"escrow_account_id": predecessor_account_id, "dao_name": dao_name.clone(), "attached_deposit": U128(env::attached_deposit())})
                     .to_string()
                     .into_bytes(),
                 0,

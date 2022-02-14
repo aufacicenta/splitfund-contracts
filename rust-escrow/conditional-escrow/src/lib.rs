@@ -1,5 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
+use near_sdk::json_types::U128;
 use near_sdk::serde_json::json;
 use near_sdk::{env, log, near_bindgen, Gas};
 use near_sdk::{AccountId, Balance, Promise, PromiseResult};
@@ -36,7 +37,7 @@ impl ConditionalEscrow {
     #[init]
     pub fn new(
         expires_at: u64,
-        funding_amount_limit: u128,
+        funding_amount_limit: U128,
         recipient_account_id: AccountId,
         ft_factory_account_id: AccountId,
         metadata_url: String,
@@ -45,8 +46,8 @@ impl ConditionalEscrow {
         Self {
             deposits: UnorderedMap::new(b"r".to_vec()),
             total_funds: 0,
-            funding_amount_limit,
-            unpaid_funding_amount: funding_amount_limit,
+            funding_amount_limit : funding_amount_limit.0,
+            unpaid_funding_amount : funding_amount_limit.0,
             expires_at,
             recipient_account_id,
             ft_factory_account_id,
@@ -275,8 +276,8 @@ mod tests {
     use near_sdk::test_utils::{accounts, VMContextBuilder};
     use near_sdk::{testing_env, PromiseResult};
 
-    const ATTACHED_DEPOSIT: Balance = 1_000_000_000_000_000_000_000_000;  // 1 Near
-    const MIN_FUNDING_AMOUNT: u128  = 15_000_000_000_000_000_000_000_000; // 15 Near
+    const ATTACHED_DEPOSIT: Balance   =  1_000_000_000_000_000_000_000_000;  // 1 Near
+    const MIN_FUNDING_AMOUNT: Balance = 15_000_000_000_000_000_000_000_000; // 15 Near
 
     fn setup_context() -> VMContextBuilder {
         let mut context = VMContextBuilder::new();
@@ -292,7 +293,7 @@ mod tests {
     fn setup_contract(expires_at: u64, funding_amount_limit: u128) -> ConditionalEscrow {
         let contract = ConditionalEscrow::new(
             expires_at,
-            funding_amount_limit,
+            U128(funding_amount_limit),
             accounts(3),
             accounts(4),
             "metadata_url.json".to_string(),

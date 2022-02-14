@@ -68,7 +68,7 @@ impl FtFactory {
         let callback = Promise::new(env::current_account_id())
             .function_call(
                 "on_create_ft_callback".to_string(),
-                json!({"escrow_account_id": predecessor_account_id, "ft_account_id": ft_account_id.to_string(), "attached_deposit": env::attached_deposit().to_string()})
+                json!({"escrow_account_id": predecessor_account_id, "ft_account_id": ft_account_id.to_string(), "attached_deposit": U128(env::attached_deposit())})
                     .to_string()
                     .into_bytes(),
                 0,
