@@ -1,6 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
-use near_sdk::json_types::Base64VecU8;
+use near_sdk::json_types::{Base64VecU8, U128};
 use near_sdk::serde_json::json;
 use near_sdk::{env, near_bindgen, Gas};
 use near_sdk::{AccountId, Promise, PromiseResult};
@@ -49,6 +49,7 @@ impl DaoFactory {
     #[payable]
     pub fn create_dao(&mut self, dao_name: String, deposits: Vec<String>) -> Promise {
         let args = self.get_dao_config(dao_name.clone(), deposits);
+        let predecessor_account_id = env::predecessor_account_id();
 
         let promise = Promise::new(self.dao_factory_account.clone()).function_call(
             "create".to_string(),
@@ -62,7 +63,7 @@ impl DaoFactory {
         let callback = Promise::new(env::current_account_id())
             .function_call(
                 "on_create_dao_callback".to_string(),
-                json!({"dao_name": dao_name.clone()})
+                json!({"escrow_account_id": predecessor_account_id, "dao_name": dao_name.clone(), "attached_deposit": env::attached_deposit().to_string()})
                     .to_string()
                     .into_bytes(),
                 0,
@@ -73,7 +74,7 @@ impl DaoFactory {
     }
 
     #[private]
-    pub fn on_create_dao_callback(&mut self, dao_name: String) {
+    pub fn on_create_dao_callback(&mut self, escrow_account_id: AccountId, dao_name: String, attached_deposit: U128) -> bool {
         assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
 
         match env::promise_result(0) {
@@ -86,15 +87,16 @@ impl DaoFactory {
                             .parse()
                             .unwrap();
                     self.dao_index
-                        .insert(&env::predecessor_account_id(), &dao_account_id);
+                        .insert(&escrow_account_id, &dao_account_id);
+                    return true;
                 } else {
-                    Promise::new(env::predecessor_account_id()).transfer(env::attached_deposit());
-                    panic!("ERR_CREATE_DAO_UNSUCCESSFUL");
+                    Promise::new(escrow_account_id).transfer(attached_deposit.0);
+                    return false;
                 }
             }
             _ => {
-                Promise::new(env::predecessor_account_id()).transfer(env::attached_deposit());
-                panic!("ERR_CREATE_DAO_UNSUCCESSFUL");
+                Promise::new(escrow_account_id).transfer(attached_deposit.0);
+                false
             }
         }
     }
@@ -178,7 +180,7 @@ mod tests {
         );
 
         let dao_account_id = format!("{}.{}", dao_name.clone(), "sputnikv2.testnet".to_string());
-        contract.on_create_dao_callback(dao_name.clone());
+        contract.on_create_dao_callback(env::predecessor_account_id(), dao_name.clone(), U128(1));
 
         assert_eq!(
             contract.get_dao_by_escrow_account(env::predecessor_account_id()),
@@ -206,7 +208,7 @@ mod tests {
 
         let dao_account_id = format!("{}.{}", dao_name.clone(), "sputnikv2.testnet".to_string());
 
-        contract.on_create_dao_callback(dao_name.clone());
+        contract.on_create_dao_callback(env::predecessor_account_id(), dao_name.clone(), U128(1));
         assert_eq!(
             contract.get_dao_by_escrow_account(env::predecessor_account_id()),
             dao_account_id,
@@ -215,7 +217,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "ERR_CREATE_DAO_UNSUCCESSFUL")]
     fn test_create_dao_fail() {
         let mut context = get_context();
         let mut contract = get_contract();
@@ -238,7 +239,11 @@ mod tests {
             vec![PromiseResult::Successful("false".to_string().into_bytes())],
         );
 
-        contract.on_create_dao_callback(dao_name.clone());
+        assert_eq!(
+            contract.on_create_dao_callback(env::predecessor_account_id(), dao_name.clone(), U128(1)),
+            false,
+            "DAO creation should be failed"
+        );
 
         assert_eq!(
             contract.get_dao_by_escrow_account(env::predecessor_account_id()),

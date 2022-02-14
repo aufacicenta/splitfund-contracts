@@ -1,5 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
+use near_sdk::json_types::U128;
 use near_sdk::serde_json::json;
 use near_sdk::{env, near_bindgen, Gas};
 use near_sdk::{AccountId, Balance, Promise, PromiseResult};
@@ -48,6 +49,7 @@ impl FtFactory {
         let ft_account_id: AccountId = format!("{}.{}", name, env::current_account_id())
             .parse()
             .unwrap();
+        let predecessor_account_id = env::predecessor_account_id();
 
         let promise = Promise::new(ft_account_id.clone())
             .create_account()
@@ -56,34 +58,38 @@ impl FtFactory {
             .deploy_contract(FT_CODE.to_vec())
             .function_call(
                 "new".to_string(),
-                json!({"max_supply": FT_SUPPLY.to_string(), "escrow_account_id": env::predecessor_account_id().to_string(), "metadata": { "spec": "ft-1.0.0", "name": name.clone(), "symbol": "", "decimals": 8 }})
+                json!({"max_supply": FT_SUPPLY.to_string(), "escrow_account_id": predecessor_account_id, "metadata": { "spec": "ft-1.0.0", "name": name.clone(), "symbol": "", "decimals": 8 }})
                     .to_string()
                     .into_bytes(),
                 0,
                 GAS_FOR_CREATE_FT,
             );
 
-        let callback = Promise::new(env::current_account_id()) // the recipient of this ActionReceipt (&self)
+        let callback = Promise::new(env::current_account_id())
             .function_call(
-                "on_create_ft_callback".to_string(), // the function call will be a callback function
-                json!({"ft_account_id": ft_account_id.to_string()})
+                "on_create_ft_callback".to_string(),
+                json!({"escrow_account_id": predecessor_account_id, "ft_account_id": ft_account_id.to_string(), "attached_deposit": env::attached_deposit().to_string()})
                     .to_string()
-                    .into_bytes(), // method arguments
-                0,                                   // amount of yoctoNEAR to attach
-                GAS_FOR_CREATE_FT_CB,                // gas to attach
+                    .into_bytes(),
+                0,
+                GAS_FOR_CREATE_FT_CB,
             );
 
         promise.then(callback)
     }
 
     #[private]
-    pub fn on_create_ft_callback(&mut self, ft_account_id: AccountId) {
+    pub fn on_create_ft_callback(&mut self, escrow_account_id: AccountId, ft_account_id: AccountId, attached_deposit: U128) -> bool {
         match env::promise_result(0) {
             PromiseResult::Successful(_result) => {
                 self.ft_index
-                    .insert(&env::predecessor_account_id(), &ft_account_id);
+                    .insert(&escrow_account_id, &ft_account_id);
+                true
             }
-            _ => env::panic_str("ERR_CREATE_FT_UNSUCCESSFUL"),
+            _ => {
+                Promise::new(escrow_account_id).transfer(attached_deposit.0);
+                false
+            },
         }
     }
 }
@@ -154,7 +160,7 @@ mod tests {
             .parse()
             .unwrap();
 
-        contract.on_create_ft_callback(ft_account_id.clone());
+        contract.on_create_ft_callback(env::predecessor_account_id(), ft_account_id.clone(), U128(1));
 
         assert_eq!(
             contract.get_ft_by_escrow_account(env::predecessor_account_id()),
@@ -184,7 +190,7 @@ mod tests {
             .parse()
             .unwrap();
 
-        contract.on_create_ft_callback(ft_account_id.clone());
+        contract.on_create_ft_callback(env::predecessor_account_id(), ft_account_id.clone(), U128(1));
 
         assert_eq!(
             contract.get_ft_by_escrow_account(env::predecessor_account_id()),
@@ -194,7 +200,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "ERR_CREATE_FT_UNSUCCESSFUL")]
     fn test_create_ft_fail() {
         let mut context = get_context();
         let mut contract = get_contract();
@@ -220,7 +225,11 @@ mod tests {
             .parse()
             .unwrap();
 
-        contract.on_create_ft_callback(ft_account_id.clone());
+        assert_eq!(
+            contract.on_create_ft_callback(env::predecessor_account_id(), ft_account_id.clone(), U128(1)),
+            false,
+            "FT creation should be failed"
+        );
 
         assert_eq!(
             contract.get_ft_by_escrow_account(env::predecessor_account_id()),

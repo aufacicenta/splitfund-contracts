@@ -1,7 +1,8 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedSet;
 use near_sdk::json_types::{Base64VecU8, U128};
-use near_sdk::{assert_self, env, ext_contract, near_bindgen, AccountId, Gas, Promise};
+use near_sdk::serde_json::json;
+use near_sdk::{assert_self, env, near_bindgen, AccountId, Gas, Promise};
 
 const ESCROW_CODE: &[u8] = include_bytes!("./escrow.wasm");
 const CONDITIONAL_ESCROW_CODE: &[u8] = include_bytes!("./conditional_escrow.wasm");
@@ -11,23 +12,6 @@ const CREATE_CALL_GAS: Gas = Gas(75_000_000_000_000);
 
 /// Gas allocated on the callback.
 const ON_CREATE_CALL_GAS: Gas = Gas(10_000_000_000_000);
-
-#[ext_contract(ext_self)]
-pub trait ExtSelf {
-    fn on_create_basic_escrow(
-        &mut self,
-        account_id: AccountId,
-        attached_deposit: U128,
-        predecessor_account_id: AccountId,
-    ) -> bool;
-
-    fn on_create_conditional_escrow(
-        &mut self,
-        account_id: AccountId,
-        attached_deposit: U128,
-        predecessor_account_id: AccountId,
-    ) -> bool;
-}
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
@@ -99,23 +83,25 @@ impl EscrowFactory {
             .create_account()
             .add_full_access_key(env::signer_account_pk())
             .transfer(env::attached_deposit())
-            .deploy_contract(ESCROW_CODE.to_vec());
-
-        promise
+            .deploy_contract(ESCROW_CODE.to_vec())
             .function_call(
                 "new".to_string(),
                 args.into(),
                 0,
                 env::prepaid_gas() - CREATE_CALL_GAS - ON_CREATE_CALL_GAS,
-            )
-            .then(ext_self::on_create_basic_escrow(
-                account_id,
-                U128(env::attached_deposit()),
-                env::predecessor_account_id(),
-                env::current_account_id(),
+            );
+
+        let callback = Promise::new(env::current_account_id())
+            .function_call(
+                "on_create_basic_escrow".to_string(),
+                json!({"account_id": account_id, "attached_deposit": U128(env::attached_deposit()), "predecessor_account_id": env::predecessor_account_id()})
+                    .to_string()
+                    .into_bytes(),
                 0,
                 ON_CREATE_CALL_GAS,
-            ))
+            );
+
+        promise.then(callback)
     }
 
     pub fn on_create_basic_escrow(
@@ -145,23 +131,25 @@ impl EscrowFactory {
             .create_account()
             .add_full_access_key(env::signer_account_pk())
             .deploy_contract(CONDITIONAL_ESCROW_CODE.to_vec())
-            .transfer(env::attached_deposit());
-
-        promise
+            .transfer(env::attached_deposit())
             .function_call(
                 "new".to_string(),
                 args.into(),
                 0,
                 env::prepaid_gas() - CREATE_CALL_GAS - ON_CREATE_CALL_GAS,
-            )
-            .then(ext_self::on_create_conditional_escrow(
-                account_id,
-                U128(env::attached_deposit()),
-                env::predecessor_account_id(),
-                env::current_account_id(),
+            );
+
+        let callback = Promise::new(env::current_account_id())
+            .function_call(
+                "on_create_conditional_escrow".to_string(),
+                json!({"account_id": account_id, "attached_deposit": U128(env::attached_deposit()), "predecessor_account_id": env::predecessor_account_id()})
+                    .to_string()
+                    .into_bytes(),
                 0,
                 ON_CREATE_CALL_GAS,
-            ))
+            );
+
+        promise.then(callback)
     }
 
     pub fn on_create_conditional_escrow(

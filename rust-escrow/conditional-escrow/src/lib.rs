@@ -219,15 +219,29 @@ impl ConditionalEscrow {
         let ft_on_create;
 
         match env::promise_result(0) {
-            PromiseResult::Successful(_result) => {
-                self.total_funds = 0;
-                dao_on_create = true;
+            PromiseResult::Successful(result) => {
+                let res: bool = near_sdk::serde_json::from_slice(&result).unwrap();
+
+                if res {
+                    self.total_funds = 0;
+                    dao_on_create = true;
+                } else {
+                    dao_on_create = false;
+                }
             },
             _ => panic!("ERR_CREATE_DAO_UNSUCCESSFUL"),
         }
 
         match env::promise_result(1) {
-            PromiseResult::Successful(_result) => ft_on_create = true,
+            PromiseResult::Successful(result) => {
+                let res: bool = near_sdk::serde_json::from_slice(&result).unwrap();
+
+                if res {
+                    ft_on_create = true;
+                } else {
+                    ft_on_create = false;
+                }
+            },
             _ => panic!("ERR_CREATE_DAO_UNSUCCESSFUL"),
         }
 
@@ -715,10 +729,14 @@ mod tests {
             near_sdk::VMConfig::test(),
             near_sdk::RuntimeFeesConfig::test(),
             Default::default(),
-            vec![PromiseResult::Successful(vec![]), PromiseResult::Successful(vec![])],
+            vec![PromiseResult::Successful("true".to_string().into_bytes()), PromiseResult::Successful("true".to_string().into_bytes())],
         );
 
-        contract.on_delegate_callback();
+        assert_eq!(
+            contract.on_delegate_callback(),
+            true,
+            "Funds delegate should run successfully"
+        );
 
         assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
 
@@ -774,7 +792,11 @@ mod tests {
             vec![PromiseResult::Failed, PromiseResult::Failed],
         );
 
-        contract.on_delegate_callback();
+        assert_eq!(
+            contract.on_delegate_callback(),
+            false,
+            "Funds delegate should fail"
+        );
 
         assert_eq!(
             MIN_FUNDING_AMOUNT,
@@ -828,10 +850,14 @@ mod tests {
             near_sdk::VMConfig::test(),
             near_sdk::RuntimeFeesConfig::test(),
             Default::default(),
-            vec![PromiseResult::Successful(vec![]), PromiseResult::Successful(vec![])],
+            vec![PromiseResult::Successful("true".to_string().into_bytes()), PromiseResult::Successful("true".to_string().into_bytes())],
         );
 
-        contract.on_delegate_callback();
+        assert_eq!(
+            contract.on_delegate_callback(),
+            true,
+            "Funds delegate should run successfully"
+        );
 
         assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
 
