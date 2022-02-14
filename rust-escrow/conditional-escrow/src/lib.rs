@@ -119,6 +119,8 @@ impl ConditionalEscrow {
             "ERR_OWNER_SHOULD_NOT_DEPOSIT"
         );
 
+        assert_ne!(env::attached_deposit(), 0, "ERR_DEPOSIT_NOT_SHOULD_BE_0");
+
         assert!(self.is_deposit_allowed(), "ERR_DEPOSIT_NOT_ALLOWED");
         assert!(
             env::attached_deposit() <= self.get_unpaid_funding_amount(),
@@ -529,6 +531,23 @@ mod tests {
         );
 
         assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_DEPOSIT_NOT_SHOULD_BE_0")]
+    fn test_deposits() {
+        let mut context = setup_context();
+
+        testing_env!(context
+            .signer_account_id(bob())
+            .attached_deposit(0)
+            .build());
+
+        let expires_at = add_expires_at_nanos(100);
+
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        contract.deposit();
     }
 
     #[test]
