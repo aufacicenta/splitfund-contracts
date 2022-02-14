@@ -46,8 +46,8 @@ impl ConditionalEscrow {
         Self {
             deposits: UnorderedMap::new(b"r".to_vec()),
             total_funds: 0,
-            funding_amount_limit : funding_amount_limit.0,
-            unpaid_funding_amount : funding_amount_limit.0,
+            funding_amount_limit: funding_amount_limit.0,
+            unpaid_funding_amount: funding_amount_limit.0,
             expires_at,
             recipient_account_id,
             ft_factory_account_id,
@@ -64,9 +64,7 @@ impl ConditionalEscrow {
 
     pub fn get_shares_of(&self, payee: &AccountId) -> Balance {
         match self.deposits.get(payee) {
-            Some(deposit) => {
-                deposit * 1000 / self.funding_amount_limit
-            },
+            Some(deposit) => deposit * 1000 / self.funding_amount_limit,
             None => 0,
         }
     }
@@ -190,26 +188,19 @@ impl ConditionalEscrow {
 
         let ft_promise = Promise::new(self.ft_factory_account_id.clone()).function_call(
             "create_ft".to_string(),
-            json!({"name": dao_name.clone()})
-                .to_string()
-                .into_bytes(),
+            json!({"name": dao_name.clone()}).to_string().into_bytes(),
             ATTACHED_FT,
             GAS_FOR_CREATE_FT,
         );
 
-        let callback = Promise::new(env::current_account_id())
-            .function_call(
-                "on_delegate_callback".to_string(),
-                json!({})
-                    .to_string()
-                    .into_bytes(),
-                0,
-                GAS_FOR_CALLBACK,
-            );
+        let callback = Promise::new(env::current_account_id()).function_call(
+            "on_delegate_callback".to_string(),
+            json!({}).to_string().into_bytes(),
+            0,
+            GAS_FOR_CALLBACK,
+        );
 
-        dao_promise
-            .and(ft_promise)
-            .then(callback)
+        dao_promise.and(ft_promise).then(callback)
 
         // @TODO emit delegate_funds event
     }
@@ -218,8 +209,8 @@ impl ConditionalEscrow {
     pub fn on_delegate_callback(&mut self) -> bool {
         assert_eq!(env::promise_results_count(), 2, "ERR_CALLBACK_METHOD");
 
-        let dao_on_create;
-        let ft_on_create;
+        let on_create_dao_successful;
+        let on_create_ft_successful;
 
         match env::promise_result(0) {
             PromiseResult::Successful(result) => {
@@ -227,11 +218,11 @@ impl ConditionalEscrow {
 
                 if res {
                     self.total_funds = 0;
-                    dao_on_create = true;
+                    on_create_dao_successful = true;
                 } else {
-                    dao_on_create = false;
+                    on_create_dao_successful = false;
                 }
-            },
+            }
             _ => panic!("ERR_CREATE_DAO_UNSUCCESSFUL"),
         }
 
@@ -240,15 +231,15 @@ impl ConditionalEscrow {
                 let res: bool = near_sdk::serde_json::from_slice(&result).unwrap();
 
                 if res {
-                    ft_on_create = true;
+                    on_create_ft_successful = true;
                 } else {
-                    ft_on_create = false;
+                    on_create_ft_successful = false;
                 }
-            },
-            _ => panic!("ERR_CREATE_DAO_UNSUCCESSFUL"),
+            }
+            _ => panic!("ERR_CREATE_FT_UNSUCCESSFUL"),
         }
 
-        dao_on_create && ft_on_create
+        on_create_dao_successful && on_create_ft_successful
     }
 
     fn has_contract_expired(&self) -> bool {
@@ -278,7 +269,7 @@ mod tests {
     use near_sdk::test_utils::{accounts, VMContextBuilder};
     use near_sdk::{testing_env, PromiseResult};
 
-    const ATTACHED_DEPOSIT: Balance   =  1_000_000_000_000_000_000_000_000;  // 1 Near
+    const ATTACHED_DEPOSIT: Balance = 1_000_000_000_000_000_000_000_000; // 1 Near
     const MIN_FUNDING_AMOUNT: Balance = 15_000_000_000_000_000_000_000_000; // 15 Near
 
     fn setup_context() -> VMContextBuilder {
@@ -400,7 +391,7 @@ mod tests {
         contract.deposit();
 
         assert_eq!(
-            vec![ "bob.near", "carol.near" ],
+            vec!["bob.near", "carol.near"],
             contract.get_deposit_accounts(),
         );
     }
@@ -538,10 +529,7 @@ mod tests {
     fn test_deposits() {
         let mut context = setup_context();
 
-        testing_env!(context
-            .signer_account_id(bob())
-            .attached_deposit(0)
-            .build());
+        testing_env!(context.signer_account_id(bob()).attached_deposit(0).build());
 
         let expires_at = add_expires_at_nanos(100);
 
@@ -749,13 +737,16 @@ mod tests {
             near_sdk::VMConfig::test(),
             near_sdk::RuntimeFeesConfig::test(),
             Default::default(),
-            vec![PromiseResult::Successful("true".to_string().into_bytes()), PromiseResult::Successful("true".to_string().into_bytes())],
+            vec![
+                PromiseResult::Successful("true".to_string().into_bytes()),
+                PromiseResult::Successful("true".to_string().into_bytes())
+            ],
         );
 
         assert_eq!(
             contract.on_delegate_callback(),
             true,
-            "Funds delegate should run successfully"
+            "delegate_funds should run successfully"
         );
 
         assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
@@ -815,7 +806,7 @@ mod tests {
         assert_eq!(
             contract.on_delegate_callback(),
             false,
-            "Funds delegate should fail"
+            "delegate_funds should fail"
         );
 
         assert_eq!(
@@ -870,13 +861,16 @@ mod tests {
             near_sdk::VMConfig::test(),
             near_sdk::RuntimeFeesConfig::test(),
             Default::default(),
-            vec![PromiseResult::Successful("true".to_string().into_bytes()), PromiseResult::Successful("true".to_string().into_bytes())],
+            vec![
+                PromiseResult::Successful("true".to_string().into_bytes()),
+                PromiseResult::Successful("true".to_string().into_bytes())
+            ],
         );
 
         assert_eq!(
             contract.on_delegate_callback(),
             true,
-            "Funds delegate should run successfully"
+            "delegate_funds should run successfully"
         );
 
         assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");

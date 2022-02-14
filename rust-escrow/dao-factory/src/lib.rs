@@ -74,7 +74,12 @@ impl DaoFactory {
     }
 
     #[private]
-    pub fn on_create_dao_callback(&mut self, escrow_account_id: AccountId, dao_name: String, attached_deposit: U128) -> bool {
+    pub fn on_create_dao_callback(
+        &mut self,
+        escrow_account_id: AccountId,
+        dao_name: String,
+        attached_deposit: U128,
+    ) -> bool {
         assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
 
         match env::promise_result(0) {
@@ -86,8 +91,7 @@ impl DaoFactory {
                         format!("{}.{}", dao_name, self.dao_factory_account)
                             .parse()
                             .unwrap();
-                    self.dao_index
-                        .insert(&escrow_account_id, &dao_account_id);
+                    self.dao_index.insert(&escrow_account_id, &dao_account_id);
                     return true;
                 } else {
                     Promise::new(escrow_account_id).transfer(attached_deposit.0);
@@ -108,7 +112,7 @@ mod tests {
     use near_sdk::test_utils::test_env::{alice, bob};
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::PublicKey;
-    use near_sdk::{Balance, PromiseResult, testing_env};
+    use near_sdk::{testing_env, Balance, PromiseResult};
 
     pub const ATTACHED_DEPOSIT: Balance = 10_000_000_000_000_000_000_000_000; // 10 NEAR
 
@@ -240,9 +244,13 @@ mod tests {
         );
 
         assert_eq!(
-            contract.on_create_dao_callback(env::predecessor_account_id(), dao_name.clone(), U128(1)),
+            contract.on_create_dao_callback(
+                env::predecessor_account_id(),
+                dao_name.clone(),
+                U128(1)
+            ),
             false,
-            "DAO creation should be failed"
+            "DAO creation should fail"
         );
 
         assert_eq!(
