@@ -21,7 +21,7 @@ pub struct ConditionalEscrow {
     total_funds: Balance,
     funding_amount_limit: u128,
     unpaid_funding_amount: u128,
-    recipient_account_id: AccountId,
+    dao_factory_account_id: AccountId,
     ft_factory_account_id: AccountId,
     metadata_url: String,
 }
@@ -38,7 +38,7 @@ impl ConditionalEscrow {
     pub fn new(
         expires_at: u64,
         funding_amount_limit: U128,
-        recipient_account_id: AccountId,
+        dao_factory_account_id: AccountId,
         ft_factory_account_id: AccountId,
         metadata_url: String,
     ) -> Self {
@@ -49,7 +49,7 @@ impl ConditionalEscrow {
             funding_amount_limit: funding_amount_limit.0,
             unpaid_funding_amount: funding_amount_limit.0,
             expires_at,
-            recipient_account_id,
+            dao_factory_account_id,
             ft_factory_account_id,
             metadata_url: metadata_url,
         }
@@ -93,8 +93,8 @@ impl ConditionalEscrow {
         self.unpaid_funding_amount
     }
 
-    pub fn get_recipient_account_id(&self) -> AccountId {
-        self.recipient_account_id.clone()
+    pub fn get_dao_factory_account_id(&self) -> AccountId {
+        self.dao_factory_account_id.clone()
     }
 
     pub fn get_ft_factory_account_id(&self) -> AccountId {
@@ -177,7 +177,7 @@ impl ConditionalEscrow {
 
         // @TODO charge a fee here (1.5% initially?) when a property is sold by our contract
 
-        let dao_promise = Promise::new(self.recipient_account_id.clone()).function_call(
+        let dao_promise = Promise::new(self.dao_factory_account_id.clone()).function_call(
             "create_dao".to_string(),
             json!({"dao_name": dao_name.clone(), "deposits": self.get_deposit_accounts() })
                 .to_string()
@@ -397,14 +397,14 @@ mod tests {
     }
 
     #[test]
-    fn test_get_recipient_account_id() {
+    fn test_get_dao_factory_account_id() {
         let expires_at = add_expires_at_nanos(100);
 
         let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
 
         assert_eq!(
             accounts(3),
-            contract.get_recipient_account_id(),
+            contract.get_dao_factory_account_id(),
             "Recipient account id should be 'danny.near'"
         );
     }
