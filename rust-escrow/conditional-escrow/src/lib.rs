@@ -223,7 +223,7 @@ impl ConditionalEscrow {
                     on_create_dao_successful = false;
                 }
             }
-            _ => panic!("ERR_CREATE_DAO_UNSUCCESSFUL"),
+            _ => env::panic_str("ERR_CREATE_DAO_UNSUCCESSFUL"),
         }
 
         match env::promise_result(1) {
@@ -236,7 +236,7 @@ impl ConditionalEscrow {
                     on_create_ft_successful = false;
                 }
             }
-            _ => panic!("ERR_CREATE_FT_UNSUCCESSFUL"),
+            _ => env::panic_str("ERR_CREATE_FT_UNSUCCESSFUL"),
         }
 
         on_create_dao_successful && on_create_ft_successful
