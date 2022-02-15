@@ -8,17 +8,22 @@ sh build.sh
 cargo test -- --nocapture --exact
 cd $ROOT
 
+cd escrow
+sh build.sh
+cargo test -- --nocapture --exact
+cd $ROOT
+
 cd dao-factory
 sh build.sh
 cargo test -- --nocapture --exact
 cd $ROOT
 
-cd ft-factory
+cd fungible-token
 sh build.sh
 cargo test -- --nocapture --exact
 cd $ROOT
 
-cd fungible-token
+cd ft-factory
 sh build.sh
 cargo test -- --nocapture --exact
 cd $ROOT

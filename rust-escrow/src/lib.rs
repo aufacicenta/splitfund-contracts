@@ -234,7 +234,7 @@ mod tests {
         let (mut context, mut factory) = setup_contract();
 
         let now = Utc::now().timestamp_nanos();
-        let args = json!({ "expires_at": now, "min_funding_amount": 1_000_000_000, "recipient_account_id": "svpervnder.testnet", "metadata_url": "metadata_url.json" })
+        let args = json!({ "expires_at": now, "funding_amount_limit": 1_000_000_000, "dao_factory_account_id": "daofactory.testnet", "ft_factory_account_id": "ftfactory.testnet", "metadata_url": "metadata_url.json" })
             .to_string()
             .into_bytes().to_vec().into();
 
