@@ -28,4 +28,9 @@ sh build.sh
 cargo test -- --nocapture --exact
 cd $ROOT
 
+cd staking-factory
+sh build.sh
+cargo test -- --nocapture --exact
+cd $ROOT
+
 cargo build

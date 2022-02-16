@@ -30,7 +30,7 @@ pub struct ConditionalEscrow {
     sk_factory_account_id: AccountId,
     metadata_url: String,
     dao_name: String,
-    dao_created: bool,
+    is_dao_created: bool,
 }
 
 impl Default for ConditionalEscrow {
@@ -62,7 +62,7 @@ impl ConditionalEscrow {
             sk_factory_account_id,
             metadata_url: metadata_url,
             dao_name: "".to_string(),
-            dao_created: false,
+            is_dao_created: false,
         }
     }
 
@@ -206,7 +206,9 @@ impl ConditionalEscrow {
 
         let callback = Promise::new(env::current_account_id()).function_call(
             "on_delegate_callback".to_string(),
-            json!({"dao_name": dao_name.clone()}).to_string().into_bytes(),
+            json!({"dao_name": dao_name.clone()})
+                .to_string()
+                .into_bytes(),
             0,
             GAS_FOR_CALLBACK,
         );
@@ -231,7 +233,7 @@ impl ConditionalEscrow {
                 if res {
                     self.total_funds = 0;
                     self.dao_name = dao_name;
-                    self.dao_created = true;
+                    self.is_dao_created = true;
                     on_create_dao_successful = true;
                 } else {
                     on_create_dao_successful = false;
@@ -259,7 +261,7 @@ impl ConditionalEscrow {
 
     #[payable]
     pub fn enable_staking(&mut self) -> Promise {
-        if !self.dao_created {
+        if !self.is_dao_created {
             env::panic_str("ERR_DAO_IS_REQUIRED_FOR_STAKING");
         }
 

@@ -79,17 +79,21 @@ impl FtFactory {
     }
 
     #[private]
-    pub fn on_create_ft_callback(&mut self, escrow_account_id: AccountId, ft_account_id: AccountId, attached_deposit: U128) -> bool {
+    pub fn on_create_ft_callback(
+        &mut self,
+        escrow_account_id: AccountId,
+        ft_account_id: AccountId,
+        attached_deposit: U128,
+    ) -> bool {
         match env::promise_result(0) {
             PromiseResult::Successful(_result) => {
-                self.ft_index
-                    .insert(&escrow_account_id, &ft_account_id);
+                self.ft_index.insert(&escrow_account_id, &ft_account_id);
                 true
             }
             _ => {
                 Promise::new(escrow_account_id).transfer(attached_deposit.0);
                 false
-            },
+            }
         }
     }
 }
@@ -160,7 +164,11 @@ mod tests {
             .parse()
             .unwrap();
 
-        contract.on_create_ft_callback(env::predecessor_account_id(), ft_account_id.clone(), U128(1));
+        contract.on_create_ft_callback(
+            env::predecessor_account_id(),
+            ft_account_id.clone(),
+            U128(1),
+        );
 
         assert_eq!(
             contract.get_ft_by_escrow_account(env::predecessor_account_id()),
@@ -190,7 +198,11 @@ mod tests {
             .parse()
             .unwrap();
 
-        contract.on_create_ft_callback(env::predecessor_account_id(), ft_account_id.clone(), U128(1));
+        contract.on_create_ft_callback(
+            env::predecessor_account_id(),
+            ft_account_id.clone(),
+            U128(1),
+        );
 
         assert_eq!(
             contract.get_ft_by_escrow_account(env::predecessor_account_id()),
@@ -226,7 +238,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            contract.on_create_ft_callback(env::predecessor_account_id(), ft_account_id.clone(), U128(1)),
+            contract.on_create_ft_callback(
+                env::predecessor_account_id(),
+                ft_account_id.clone(),
+                U128(1)
+            ),
             false,
             "FT creation should be failed"
         );

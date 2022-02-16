@@ -42,7 +42,13 @@ impl StakingFactory {
     }
 
     #[payable]
-    pub fn create_stake(&mut self, name: String, dao_account_id: AccountId, token_account_id: AccountId, unstake_period: U64) -> Promise {
+    pub fn create_stake(
+        &mut self,
+        name: String,
+        dao_account_id: AccountId,
+        token_account_id: AccountId,
+        unstake_period: U64,
+    ) -> Promise {
         let stake_account_id: AccountId = format!("{}.{}", name, env::current_account_id())
             .parse()
             .unwrap();
@@ -76,7 +82,12 @@ impl StakingFactory {
     }
 
     #[private]
-    pub fn on_create_stake_callback(&mut self, escrow_account_id: AccountId, stake_account_id: AccountId, attached_deposit: U128) -> bool {
+    pub fn on_create_stake_callback(
+        &mut self,
+        escrow_account_id: AccountId,
+        stake_account_id: AccountId,
+        attached_deposit: U128,
+    ) -> bool {
         match env::promise_result(0) {
             PromiseResult::Successful(_result) => {
                 self.staking_index
@@ -86,7 +97,7 @@ impl StakingFactory {
             _ => {
                 Promise::new(escrow_account_id).transfer(attached_deposit.0);
                 false
-            },
+            }
         }
     }
 }
@@ -153,11 +164,16 @@ mod tests {
             vec![PromiseResult::Successful(vec![])],
         );
 
-        let stake_account_id: AccountId = format!("{}.{}", staking_name.clone(), env::current_account_id())
-            .parse()
-            .unwrap();
+        let stake_account_id: AccountId =
+            format!("{}.{}", staking_name.clone(), env::current_account_id())
+                .parse()
+                .unwrap();
 
-        contract.on_create_stake_callback(env::predecessor_account_id(), stake_account_id.clone(), U128(1));
+        contract.on_create_stake_callback(
+            env::predecessor_account_id(),
+            stake_account_id.clone(),
+            U128(1),
+        );
 
         assert_eq!(
             contract.get_staking_by_escrow_account(env::predecessor_account_id()),
@@ -183,11 +199,16 @@ mod tests {
             vec![PromiseResult::Successful(vec![])],
         );
 
-        let stake_account_id: AccountId = format!("{}.{}", staking_name.clone(), env::current_account_id())
-            .parse()
-            .unwrap();
+        let stake_account_id: AccountId =
+            format!("{}.{}", staking_name.clone(), env::current_account_id())
+                .parse()
+                .unwrap();
 
-        contract.on_create_stake_callback(env::predecessor_account_id(), stake_account_id.clone(), U128(1));
+        contract.on_create_stake_callback(
+            env::predecessor_account_id(),
+            stake_account_id.clone(),
+            U128(1),
+        );
 
         assert_eq!(
             contract.get_staking_by_escrow_account(env::predecessor_account_id()),
@@ -218,12 +239,17 @@ mod tests {
             vec![PromiseResult::Failed],
         );
 
-        let stake_account_id: AccountId = format!("{}.{}", staking_name.clone(), env::current_account_id())
-            .parse()
-            .unwrap();
+        let stake_account_id: AccountId =
+            format!("{}.{}", staking_name.clone(), env::current_account_id())
+                .parse()
+                .unwrap();
 
         assert_eq!(
-            contract.on_create_stake_callback(env::predecessor_account_id(), stake_account_id.clone(), U128(1)),
+            contract.on_create_stake_callback(
+                env::predecessor_account_id(),
+                stake_account_id.clone(),
+                U128(1)
+            ),
             false,
             "Staking creation should be failed"
         );
