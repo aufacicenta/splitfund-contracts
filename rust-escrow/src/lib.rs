@@ -96,6 +96,7 @@ impl EscrowFactory {
             true
         } else {
             Promise::new(predecessor_account_id).transfer(attached_deposit.0);
+            // @TODO, we need to panick to let the wallet notify the user, BUT we need to wait for the transfer Promise above to finish first
             env::panic_str("ERR_CREATE_CONDITIONAL_ESCROW_UNSUCCESSFUL")
         }
     }

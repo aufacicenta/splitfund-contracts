@@ -33,4 +33,5 @@ sh build.sh
 cargo test -- --nocapture --exact
 cd $ROOT
 
-cargo build
+cargo test -- --nocapture --exact
+cargo build --target wasm32-unknown-unknown --release

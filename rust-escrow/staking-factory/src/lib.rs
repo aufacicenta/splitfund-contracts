@@ -6,7 +6,7 @@ use near_sdk::{env, near_bindgen, Gas};
 use near_sdk::{AccountId, Promise, PromiseResult};
 
 // Staking Contract
-const STAKING_CODE: &[u8] = include_bytes!("../../src/staking.wasm");
+const STAKING_CODE: &[u8] = include_bytes!("./staking.wasm");
 
 // Amount of gas used
 pub const GAS_FOR_CREATE_SK: Gas = Gas(5_000_000_000_000);
