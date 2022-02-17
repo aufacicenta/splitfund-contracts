@@ -111,6 +111,9 @@ impl ConditionalEscrow {
     pub fn get_ft_factory_account_id(&self) -> AccountId {
         self.ft_factory_account_id.clone()
     }
+    pub fn get_dao_name(&self) -> String {
+        self.dao_name.clone()
+    }
 
     pub fn is_deposit_allowed(&self) -> bool {
         !self.has_contract_expired() && !self.is_funding_reached()
@@ -497,6 +500,54 @@ mod tests {
             contract.get_dao_factory_account_id(),
             "Recipient account id should be 'danny.near'"
         );
+    }
+
+    #[test]
+    fn test_get_dao_name() {
+        let mut context = setup_context();
+
+        let expires_at = add_expires_at_nanos(100);
+
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        testing_env!(context
+            .signer_account_id(bob())
+            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
+            .build());
+
+        contract.deposit();
+
+        testing_env!(context
+            .signer_account_id(carol())
+            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
+            .build());
+
+        contract.deposit();
+
+        testing_env!(context
+            .block_timestamp((expires_at + 200).try_into().unwrap())
+            .build());
+
+        contract.delegate_funds("dao1".to_string());
+
+        testing_env!(
+            context.build(),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![
+                PromiseResult::Successful("true".to_string().into_bytes()),
+                PromiseResult::Successful("true".to_string().into_bytes())
+            ],
+        );
+
+        assert_eq!(
+            contract.on_delegate_callback("dao1".to_string()),
+            true,
+            "delegate_funds should run successfully"
+        );
+
+        assert_eq!("dao1", contract.get_dao_name(), "Should equal DAO Name");
     }
 
     #[test]

@@ -40,6 +40,10 @@ impl DaoFactory {
         }
     }
 
+    pub fn get_dao_factory_account(&self) -> AccountId {
+        self.dao_factory_account.clone()
+    }
+
     fn get_dao_config(&self, name: String, accounts: Vec<String>) -> Vec<u8> {
         json!({ "policy": { "roles": [ { "name": "Everyone", "kind": { "Group": accounts }, "permissions": [ "*:Finalize", "*:AddProposal", "*:VoteApprove", "*:VoteReject", "*:VoteRemove" ], "vote_policy": {} }, { "name": "all", "kind": "Everyone", "permissions": [ "*:AddProposal" ], "vote_policy": {} } ], "default_vote_policy": { "weight_kind": "RoleWeight", "quorum": "0", "threshold": [ 1, 2 ] }, "proposal_bond": "100000000000000000000000", "proposal_period": "604800000000000", "bounty_bond": "100000000000000000000000", "bounty_forgiveness_period": "604800000000000" }, "config": { "name": name, "purpose": "", "metadata": "" } })
             .to_string()
@@ -115,6 +119,7 @@ mod tests {
     use near_sdk::{testing_env, Balance, PromiseResult};
 
     pub const ATTACHED_DEPOSIT: Balance = 10_000_000_000_000_000_000_000_000; // 10 NEAR
+    const DAO_FACTORY_ACCOUNT: &str = "sputnikv2.testnet";
 
     fn get_signer_pk() -> PublicKey {
         "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp"
@@ -133,7 +138,7 @@ mod tests {
     }
 
     fn get_contract() -> DaoFactory {
-        DaoFactory::new("sputnikv2.testnet".parse::<AccountId>().unwrap())
+        DaoFactory::new(DAO_FACTORY_ACCOUNT.parse::<AccountId>().unwrap())
     }
 
     #[test]
@@ -145,6 +150,17 @@ mod tests {
             json!({ "policy": { "roles": [ { "name": "Everyone", "kind": { "Group": vec!["poguz.testnet".to_string()] }, "permissions": [ "*:Finalize", "*:AddProposal", "*:VoteApprove", "*:VoteReject", "*:VoteRemove" ], "vote_policy": {} }, { "name": "all", "kind": "Everyone", "permissions": [ "*:AddProposal" ], "vote_policy": {} } ], "default_vote_policy": { "weight_kind": "RoleWeight", "quorum": "0", "threshold": [ 1, 2 ] }, "proposal_bond": "100000000000000000000000", "proposal_period": "604800000000000", "bounty_bond": "100000000000000000000000", "bounty_forgiveness_period": "604800000000000" }, "config": { "name": "daoname".to_string(), "purpose": "", "metadata": "" } })
                 .to_string()
                 .into_bytes()
+        );
+    }
+
+    #[test]
+    fn test_get_dao_factory_account() {
+        let contract = get_contract();
+
+        assert_eq!(
+            contract.get_dao_factory_account(),
+            DAO_FACTORY_ACCOUNT.parse::<AccountId>().unwrap(),
+            "Should equal DAO Factory account"
         );
     }
 
@@ -183,7 +199,7 @@ mod tests {
             vec![PromiseResult::Successful("true".to_string().into_bytes())],
         );
 
-        let dao_account_id = format!("{}.{}", dao_name.clone(), "sputnikv2.testnet".to_string());
+        let dao_account_id = format!("{}.{}", dao_name.clone(), DAO_FACTORY_ACCOUNT);
         contract.on_create_dao_callback(env::predecessor_account_id(), dao_name.clone(), U128(1));
 
         assert_eq!(
@@ -210,7 +226,7 @@ mod tests {
             vec![PromiseResult::Successful("true".to_string().into_bytes())],
         );
 
-        let dao_account_id = format!("{}.{}", dao_name.clone(), "sputnikv2.testnet".to_string());
+        let dao_account_id = format!("{}.{}", dao_name.clone(), DAO_FACTORY_ACCOUNT);
 
         contract.on_create_dao_callback(env::predecessor_account_id(), dao_name.clone(), U128(1));
         assert_eq!(
