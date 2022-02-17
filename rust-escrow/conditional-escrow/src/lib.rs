@@ -111,6 +111,11 @@ impl ConditionalEscrow {
     pub fn get_ft_factory_account_id(&self) -> AccountId {
         self.ft_factory_account_id.clone()
     }
+
+    pub fn get_sk_factory_account_id(&self) -> AccountId {
+        self.sk_factory_account_id.clone()
+    }
+
     pub fn get_dao_name(&self) -> String {
         self.dao_name.clone()
     }
@@ -499,6 +504,32 @@ mod tests {
             accounts(3),
             contract.get_dao_factory_account_id(),
             "Recipient account id should be 'danny.near'"
+        );
+    }
+
+    #[test]
+    fn test_get_ft_factory_account_id() {
+        let expires_at = add_expires_at_nanos(100);
+
+        let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        assert_eq!(
+            accounts(4),
+            contract.get_ft_factory_account_id(),
+            "Recipient account id should be 'eugene.near'"
+        );
+    }
+
+    #[test]
+    fn test_get_sk_factory_account_id() {
+        let expires_at = add_expires_at_nanos(100);
+
+        let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        assert_eq!(
+            accounts(5),
+            contract.get_sk_factory_account_id(),
+            "Recipient account id should be 'fargo.near'"
         );
     }
 
