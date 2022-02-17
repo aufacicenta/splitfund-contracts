@@ -27,7 +27,6 @@ pub struct ConditionalEscrow {
     unpaid_funding_amount: u128,
     dao_factory_account_id: AccountId,
     ft_factory_account_id: AccountId,
-    sk_factory_account_id: AccountId,
     metadata_url: String,
     dao_name: String,
     is_dao_created: bool,
@@ -47,7 +46,6 @@ impl ConditionalEscrow {
         funding_amount_limit: U128,
         dao_factory_account_id: AccountId,
         ft_factory_account_id: AccountId,
-        sk_factory_account_id: AccountId,
         metadata_url: String,
     ) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized");
@@ -59,8 +57,7 @@ impl ConditionalEscrow {
             expires_at,
             dao_factory_account_id,
             ft_factory_account_id,
-            sk_factory_account_id,
-            metadata_url: metadata_url,
+            metadata_url,
             dao_name: "".to_string(),
             is_dao_created: false,
         }
@@ -110,10 +107,6 @@ impl ConditionalEscrow {
 
     pub fn get_ft_factory_account_id(&self) -> AccountId {
         self.ft_factory_account_id.clone()
-    }
-
-    pub fn get_sk_factory_account_id(&self) -> AccountId {
-        self.sk_factory_account_id.clone()
     }
 
     pub fn get_dao_name(&self) -> String {
@@ -267,78 +260,6 @@ impl ConditionalEscrow {
         on_create_dao_successful && on_create_ft_successful
     }
 
-    #[payable]
-    pub fn enable_staking(&mut self) -> Promise {
-        if !self.is_dao_created {
-            env::panic_str("ERR_DAO_IS_REQUIRED_FOR_STAKING");
-        }
-
-        let dao_account_id: AccountId = format!("{}.{}", self.dao_name, "sputnikv2.testnet")
-            .parse()
-            .unwrap(); // Hardcoded needs improvement
-        let ft_account_id = format!("{}.{}", self.dao_name, self.ft_factory_account_id);
-        let sk_account_id = format!("{}.{}", self.dao_name, self.sk_factory_account_id);
-
-        let stake_promise = Promise::new(self.sk_factory_account_id.clone()).function_call(
-            "create_stake".to_string(),
-            json!({"name": self.dao_name, "dao_account_id": dao_account_id, "token_account_id": ft_account_id, "unstake_period": "100000000000"})
-                .to_string()
-                .into_bytes(),
-            ATTACHED_SK,
-            GAS_FOR_CREATE_SK,
-        );
-
-        let proposal_promise = Promise::new(dao_account_id.clone()).function_call(
-            "add_proposal".to_string(),
-            json!({"proposal": {"description": "Enable Staking", "kind": {"SetStakingContract": {"staking_id": sk_account_id}}}})
-                .to_string()
-                .into_bytes(),
-            ATTACHED_PROPOSAL,
-            GAS_FOR_PROPOSAL,
-        );
-
-        let callback = Promise::new(env::current_account_id()).function_call(
-            "on_staking_callback".to_string(),
-            json!({}).to_string().into_bytes(),
-            0,
-            GAS_FOR_CALLBACK,
-        );
-
-        stake_promise.and(proposal_promise).then(callback)
-    }
-
-    #[private]
-    pub fn on_staking_callback(&mut self) -> bool {
-        assert_eq!(env::promise_results_count(), 2, "ERR_CALLBACK_METHOD");
-
-        let on_create_stake_successful;
-        let on_create_proposal_successful;
-
-        // Create Stake Contract
-        match env::promise_result(0) {
-            PromiseResult::Successful(result) => {
-                let res: bool = near_sdk::serde_json::from_slice(&result).unwrap();
-
-                if res {
-                    on_create_stake_successful = true;
-                } else {
-                    on_create_stake_successful = false;
-                }
-            }
-            _ => env::panic_str("ERR_CREATE_STAKE_UNSUCCESSFUL"),
-        }
-
-        // Create Proposal
-        match env::promise_result(1) {
-            PromiseResult::Successful(_result) => {
-                on_create_proposal_successful = true;
-            }
-            _ => env::panic_str("ERR_CREATE_PROPOSAL_UNSUCCESSFUL"),
-        }
-
-        on_create_stake_successful && on_create_proposal_successful
-    }
-
     fn has_contract_expired(&self) -> bool {
         self.expires_at < env::block_timestamp().try_into().unwrap()
     }
@@ -386,7 +307,6 @@ mod tests {
             U128(funding_amount_limit),
             accounts(3),
             accounts(4),
-            accounts(5),
             "metadata_url.json".to_string(),
         );
 
@@ -517,19 +437,6 @@ mod tests {
             accounts(4),
             contract.get_ft_factory_account_id(),
             "Recipient account id should be 'eugene.near'"
-        );
-    }
-
-    #[test]
-    fn test_get_sk_factory_account_id() {
-        let expires_at = add_expires_at_nanos(100);
-
-        let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        assert_eq!(
-            accounts(5),
-            contract.get_sk_factory_account_id(),
-            "Recipient account id should be 'fargo.near'"
         );
     }
 
@@ -1057,142 +964,6 @@ mod tests {
             MIN_FUNDING_AMOUNT / 2,
             contract.deposits_of(&carol()),
             "Account deposits should be MIN_FUNDING_AMOUNT"
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "ERR_DAO_IS_REQUIRED_FOR_STAKING")]
-    fn test_enable_staking_not_ready() {
-        let expires_at = add_expires_at_nanos(100);
-        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        // Enable Staking
-        contract.enable_staking();
-    }
-
-    #[test]
-    fn test_enable_staking_fail() {
-        let mut context = setup_context();
-        let expires_at = add_expires_at_nanos(100);
-        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        // Bob Deposit
-        testing_env!(context
-            .signer_account_id(bob())
-            .attached_deposit(MIN_FUNDING_AMOUNT)
-            .build());
-
-        contract.deposit();
-
-        testing_env!(context
-            .block_timestamp((expires_at + 200).try_into().unwrap())
-            .build());
-
-        // Delegate Funds
-        contract.delegate_funds("dao1".to_string());
-
-        testing_env!(
-            context.build(),
-            near_sdk::VMConfig::test(),
-            near_sdk::RuntimeFeesConfig::test(),
-            Default::default(),
-            vec![
-                PromiseResult::Successful("true".to_string().into_bytes()),
-                PromiseResult::Successful("true".to_string().into_bytes())
-            ],
-        );
-
-        assert_eq!(
-            contract.on_delegate_callback("dao1".to_string()),
-            true,
-            "delegate_funds should run successfully"
-        );
-
-        // Enable Staking
-        contract.enable_staking();
-
-        testing_env!(
-            context.build(),
-            near_sdk::VMConfig::test(),
-            near_sdk::RuntimeFeesConfig::test(),
-            Default::default(),
-            vec![
-                PromiseResult::Successful("false".to_string().into_bytes()),
-                PromiseResult::Successful(vec![])
-            ],
-        );
-
-        assert_eq!(
-            contract.on_staking_callback(),
-            false,
-            "enable_staking shouldn't run successfully"
-        );
-    }
-
-    #[test]
-    fn test_enable_staking() {
-        let mut context = setup_context();
-        let expires_at = add_expires_at_nanos(100);
-        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        // Bob Deposit
-        testing_env!(context
-            .signer_account_id(bob())
-            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
-            .build());
-
-        contract.deposit();
-
-        // Carol Deposit
-        testing_env!(context
-            .signer_account_id(carol())
-            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
-            .build());
-
-        contract.deposit();
-
-        testing_env!(context
-            .block_timestamp((expires_at + 200).try_into().unwrap())
-            .build());
-
-        // Delegate Funds
-        contract.delegate_funds("dao1".to_string());
-
-        testing_env!(
-            context.build(),
-            near_sdk::VMConfig::test(),
-            near_sdk::RuntimeFeesConfig::test(),
-            Default::default(),
-            vec![
-                PromiseResult::Successful("true".to_string().into_bytes()),
-                PromiseResult::Successful("true".to_string().into_bytes())
-            ],
-        );
-
-        assert_eq!(
-            contract.on_delegate_callback("dao1".to_string()),
-            true,
-            "delegate_funds should run successfully"
-        );
-
-        // Enable Staking
-        contract.enable_staking();
-
-        testing_env!(
-            context.build(),
-            near_sdk::VMConfig::test(),
-            near_sdk::RuntimeFeesConfig::test(),
-            Default::default(),
-            vec![
-                PromiseResult::Successful("true".to_string().into_bytes()),
-                PromiseResult::Successful(vec![])
-            ],
-        );
-
-        assert_eq!(
-            contract.on_staking_callback(),
-            true,
-            "enable_staking should run successfully"
         );
     }
 }
