@@ -224,14 +224,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "conditional-escrow"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "near-sdk",
-]
-
-[[package]]
 name = "convert_case"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -742,7 +734,7 @@ version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1557010476e0595c9b568d16dcfb81b93cdeb157612726f5170d31aa707bed27"
 dependencies = [
- "proc-macro-crate 1.1.0",
+ "proc-macro-crate 1.1.1",
  "proc-macro2",
  "quote",
  "syn",
@@ -794,9 +786,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro-crate"
-version = "1.1.0"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ebace6889caf889b4d3f76becee12e90353f2b8c7d875534a71e5742f8f6f83"
+checksum = "738b5123081e03ec93bdd0229f33e39891e6ee18745b72bfc8fdc04a080d5c38"
 dependencies = [
  "thiserror",
  "toml",
@@ -1039,6 +1031,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "staking-factory"
+version = "0.1.0"
+dependencies = [
+ "near-sdk",
 ]
 
 [[package]]

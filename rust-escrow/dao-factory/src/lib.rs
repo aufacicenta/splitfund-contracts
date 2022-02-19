@@ -1,29 +1,13 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
-use near_sdk::json_types::Base64VecU8;
-use near_sdk::{env, ext_contract, near_bindgen, Gas};
-use near_sdk::{AccountId, Balance, Promise, PromiseResult};
+use near_sdk::json_types::{Base64VecU8, U128};
+use near_sdk::serde_json::json;
+use near_sdk::{env, near_bindgen, Gas};
+use near_sdk::{AccountId, Promise, PromiseResult};
 
-/// Amount of gas for create action
-pub const GAS_FOR_CREATE: Gas = Gas(90_000_000_000_000);
-pub const GAS_FOR_CREATE_CALLBACK: Gas = Gas(2_000_000_000_000);
-
-// define the methods we'll use on the other contract
-#[ext_contract(ext_dao_factory)]
-pub trait ExtDaoFactory {
-    fn create(&mut self, name: String, args: Base64VecU8);
-}
-
-// define methods we'll use as callbacks on our contract
-#[ext_contract(ext_self)]
-pub trait MyContract {
-    fn on_create_callback(
-        &mut self,
-        dao_name: String,
-        predecessor_account_id: AccountId,
-        attached_deposit: u128,
-    ) -> bool;
-}
+// Amount of gas used
+pub const GAS_FOR_CREATE_DAO: Gas = Gas(90_000_000_000_000);
+pub const GAS_FOR_CREATE_DAO_CB: Gas = Gas(5_000_000_000_000);
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
@@ -56,72 +40,72 @@ impl DaoFactory {
         }
     }
 
-    fn get_dao_config(&self, name: String, accounts: String) -> Vec<u8> {
-        format!(r#"{{ "policy": {{ "roles": [ {{ "name": "Everyone", "kind": {{ "Group": [ {} ] }}, "permissions": [ "*:Finalize", "*:AddProposal", "*:VoteApprove", "*:VoteReject", "*:VoteRemove" ], "vote_policy": {{}} }}, {{ "name": "all", "kind": "Everyone", "permissions": [ "*:AddProposal" ], "vote_policy": {{}} }} ], "default_vote_policy": {{ "weight_kind": "RoleWeight", "quorum": "0", "threshold": [ 1, 2 ] }}, "proposal_bond": "100000000000000000000000", "proposal_period": "604800000000000", "bounty_bond": "100000000000000000000000", "bounty_forgiveness_period": "604800000000000" }}, "config": {{ "name": "{}", "purpose": "", "metadata": "" }} }}"#, accounts, name).into_bytes()
+    pub fn get_dao_factory_account(&self) -> AccountId {
+        self.dao_factory_account.clone()
     }
 
-    fn get_deposit_accounts(&self, deposits: Vec<(AccountId, Balance)>) -> String {
-        let mut accounts = format!(r#""{}""#, env::current_account_id().to_string());
-
-        for i in &deposits {
-            accounts += ", ";
-            accounts += &format!(r#""{}""#, &i.0.to_string().to_string());
-        }
-
-        accounts
+    fn get_dao_config(&self, name: String, accounts: Vec<String>) -> Vec<u8> {
+        json!({ "policy": { "roles": [ { "name": "Everyone", "kind": { "Group": accounts }, "permissions": [ "*:Finalize", "*:AddProposal", "*:VoteApprove", "*:VoteReject", "*:VoteRemove" ], "vote_policy": {} }, { "name": "all", "kind": "Everyone", "permissions": [ "*:AddProposal" ], "vote_policy": {} } ], "default_vote_policy": { "weight_kind": "RoleWeight", "quorum": "0", "threshold": [ 1, 2 ] }, "proposal_bond": "100000000000000000000000", "proposal_period": "604800000000000", "bounty_bond": "100000000000000000000000", "bounty_forgiveness_period": "604800000000000" }, "config": { "name": name, "purpose": "", "metadata": "" } })
+            .to_string()
+            .into_bytes()
     }
 
     #[payable]
-    pub fn create_dao(&mut self, dao_name: String, deposits: Vec<(AccountId, Balance)>) -> Promise {
-        let deposit_accounts = self.get_deposit_accounts(deposits);
-        let args = self.get_dao_config(dao_name.clone(), deposit_accounts);
+    pub fn create_dao(&mut self, dao_name: String, deposits: Vec<String>) -> Promise {
+        let args = self.get_dao_config(dao_name.clone(), deposits);
+        let predecessor_account_id = env::predecessor_account_id();
 
-        ext_dao_factory::create(
-            dao_name.to_string(),
-            Base64VecU8(args),
-            self.dao_factory_account.clone(),
+        let promise = Promise::new(self.dao_factory_account.clone()).function_call(
+            "create".to_string(),
+            json!({"name": dao_name.clone(), "args": Base64VecU8(args) })
+                .to_string()
+                .into_bytes(),
             env::attached_deposit(),
-            GAS_FOR_CREATE,
-        )
-        .then(ext_self::on_create_callback(
-            dao_name.clone(),
-            env::predecessor_account_id(),
-            env::attached_deposit(),
-            env::current_account_id(),
-            0,
-            GAS_FOR_CREATE_CALLBACK,
-        ))
+            GAS_FOR_CREATE_DAO,
+        );
+
+        let callback = Promise::new(env::current_account_id())
+            .function_call(
+                "on_create_dao_callback".to_string(),
+                json!({"escrow_account_id": predecessor_account_id, "dao_name": dao_name.clone(), "attached_deposit": U128(env::attached_deposit())})
+                    .to_string()
+                    .into_bytes(),
+                0,
+                GAS_FOR_CREATE_DAO_CB,
+            );
+
+        promise.then(callback)
     }
 
     #[private]
-    pub fn on_create_callback(
+    pub fn on_create_dao_callback(
         &mut self,
+        escrow_account_id: AccountId,
         dao_name: String,
-        predecessor_account_id: AccountId,
-        attached_deposit: u128,
+        attached_deposit: U128,
     ) -> bool {
         assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
 
         match env::promise_result(0) {
             PromiseResult::Successful(result) => {
-                let res = String::from_utf8_lossy(&result);
+                let res: bool = near_sdk::serde_json::from_slice(&result).unwrap();
 
-                if res == "true" {
+                if res {
                     let dao_account_id: AccountId =
-                        format!("{}.{}", dao_name, env::current_account_id())
+                        format!("{}.{}", dao_name, self.dao_factory_account)
                             .parse()
                             .unwrap();
-                    self.dao_index
-                        .insert(&predecessor_account_id, &dao_account_id);
-
+                    self.dao_index.insert(&escrow_account_id, &dao_account_id);
                     return true;
+                } else {
+                    Promise::new(escrow_account_id).transfer(attached_deposit.0);
+                    return false;
                 }
-
-                Promise::new(predecessor_account_id).transfer(attached_deposit);
-
-                panic!("ERR_CREATE_DAO_UNSUCCESSFUL");
             }
-            _ => panic!("ERR_CREATE_DAO_UNSUCCESSFUL"),
+            _ => {
+                Promise::new(escrow_account_id).transfer(attached_deposit.0);
+                false
+            }
         }
     }
 }
@@ -131,7 +115,17 @@ mod tests {
     use super::*;
     use near_sdk::test_utils::test_env::{alice, bob};
     use near_sdk::test_utils::VMContextBuilder;
-    use near_sdk::{testing_env, PromiseResult};
+    use near_sdk::PublicKey;
+    use near_sdk::{testing_env, Balance, PromiseResult};
+
+    pub const ATTACHED_DEPOSIT: Balance = 10_000_000_000_000_000_000_000_000; // 10 NEAR
+    const DAO_FACTORY_ACCOUNT: &str = "sputnikv2.testnet";
+
+    fn get_signer_pk() -> PublicKey {
+        "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp"
+            .parse()
+            .unwrap()
+    }
 
     fn get_context() -> VMContextBuilder {
         let mut context = VMContextBuilder::new();
@@ -144,7 +138,7 @@ mod tests {
     }
 
     fn get_contract() -> DaoFactory {
-        DaoFactory::new("sputnikv2.testnet".parse::<AccountId>().unwrap())
+        DaoFactory::new(DAO_FACTORY_ACCOUNT.parse::<AccountId>().unwrap())
     }
 
     #[test]
@@ -152,8 +146,21 @@ mod tests {
         let contract = get_contract();
 
         assert_eq!(
-            contract.get_dao_config("daoname".to_string(), "poguz.testnet".to_string()),
-            format!(r#"{{ "policy": {{ "roles": [ {{ "name": "Everyone", "kind": {{ "Group": [ {} ] }}, "permissions": [ "*:Finalize", "*:AddProposal", "*:VoteApprove", "*:VoteReject", "*:VoteRemove" ], "vote_policy": {{}} }}, {{ "name": "all", "kind": "Everyone", "permissions": [ "*:AddProposal" ], "vote_policy": {{}} }} ], "default_vote_policy": {{ "weight_kind": "RoleWeight", "quorum": "0", "threshold": [ 1, 2 ] }}, "proposal_bond": "100000000000000000000000", "proposal_period": "604800000000000", "bounty_bond": "100000000000000000000000", "bounty_forgiveness_period": "604800000000000" }}, "config": {{ "name": "{}", "purpose": "", "metadata": "" }} }}"#, "poguz.testnet".to_string(), "daoname".to_string()).into_bytes()
+            contract.get_dao_config("daoname".to_string(), vec!["poguz.testnet".to_string()]),
+            json!({ "policy": { "roles": [ { "name": "Everyone", "kind": { "Group": vec!["poguz.testnet".to_string()] }, "permissions": [ "*:Finalize", "*:AddProposal", "*:VoteApprove", "*:VoteReject", "*:VoteRemove" ], "vote_policy": {} }, { "name": "all", "kind": "Everyone", "permissions": [ "*:AddProposal" ], "vote_policy": {} } ], "default_vote_policy": { "weight_kind": "RoleWeight", "quorum": "0", "threshold": [ 1, 2 ] }, "proposal_bond": "100000000000000000000000", "proposal_period": "604800000000000", "bounty_bond": "100000000000000000000000", "bounty_forgiveness_period": "604800000000000" }, "config": { "name": "daoname".to_string(), "purpose": "", "metadata": "" } })
+                .to_string()
+                .into_bytes()
+        );
+    }
+
+    #[test]
+    fn test_get_dao_factory_account() {
+        let contract = get_contract();
+
+        assert_eq!(
+            contract.get_dao_factory_account(),
+            DAO_FACTORY_ACCOUNT.parse::<AccountId>().unwrap(),
+            "Should equal DAO Factory account"
         );
     }
 
@@ -169,35 +176,20 @@ mod tests {
     }
 
     #[test]
-    fn test_get_deposit_accounts() {
-        let contract = get_contract();
-
-        assert_eq!(
-            contract.get_deposit_accounts(vec![]),
-            format!(r#""{}""#, alice().to_string().to_string()),
-            "The Depositor should be alice"
-        );
-
-        assert_eq!(
-            contract.get_deposit_accounts(vec![(bob(), 1000)]),
-            format!(
-                r#""{}", "{}""#,
-                alice().to_string().to_string(),
-                bob().to_string().to_string()
-            ),
-            "Depositors should be alice and bob"
-        );
-    }
-
-    #[test]
     fn test_create_dao() {
-        let context = get_context();
+        let mut context = get_context();
         let mut contract = get_contract();
-
-        let country_code = "gt".to_string();
+        let signer_pk = get_signer_pk();
 
         // First DAO
-        contract.create_dao(country_code.clone(), vec![]);
+        testing_env!(context
+            .signer_account_pk(signer_pk.clone())
+            .signer_account_id(bob())
+            .attached_deposit(ATTACHED_DEPOSIT)
+            .build());
+
+        let dao_name = "dao1".to_string();
+        contract.create_dao(dao_name.clone(), vec![]);
 
         testing_env!(
             context.build(),
@@ -207,19 +199,24 @@ mod tests {
             vec![PromiseResult::Successful("true".to_string().into_bytes())],
         );
 
-        let dao_name = "dao1".to_string();
-        let escrow_account_id: AccountId = "ce1".parse().unwrap();
-        let dao_account_id = format!("{}.{}", dao_name.clone(), env::predecessor_account_id());
+        let dao_account_id = format!("{}.{}", dao_name.clone(), DAO_FACTORY_ACCOUNT);
+        contract.on_create_dao_callback(env::predecessor_account_id(), dao_name.clone(), U128(1));
 
-        contract.on_create_callback(dao_name.clone(), escrow_account_id.clone(), 1);
         assert_eq!(
-            contract.get_dao_by_escrow_account(escrow_account_id.clone()),
+            contract.get_dao_by_escrow_account(env::predecessor_account_id()),
             dao_account_id,
             "A DAO should be found"
         );
 
         // Second DAO
-        contract.create_dao(country_code.clone(), vec![(bob(), 1000)]);
+        testing_env!(context
+            .signer_account_pk(signer_pk.clone())
+            .signer_account_id(bob())
+            .attached_deposit(ATTACHED_DEPOSIT)
+            .build());
+
+        let dao_name = "dao2".to_string();
+        contract.create_dao(dao_name.clone(), vec![bob().to_string()]);
 
         testing_env!(
             context.build(),
@@ -229,27 +226,30 @@ mod tests {
             vec![PromiseResult::Successful("true".to_string().into_bytes())],
         );
 
-        let dao_name = "dao2".to_string();
-        let escrow_account_id: AccountId = "ce2".parse().unwrap();
-        let dao_account_id = format!("{}.{}", dao_name.clone(), env::predecessor_account_id());
+        let dao_account_id = format!("{}.{}", dao_name.clone(), DAO_FACTORY_ACCOUNT);
 
-        contract.on_create_callback(dao_name.clone(), escrow_account_id.clone(), 1);
+        contract.on_create_dao_callback(env::predecessor_account_id(), dao_name.clone(), U128(1));
         assert_eq!(
-            contract.get_dao_by_escrow_account(escrow_account_id.clone()),
+            contract.get_dao_by_escrow_account(env::predecessor_account_id()),
             dao_account_id,
             "A DAO should be found"
         );
     }
 
     #[test]
-    #[should_panic(expected = "ERR_CREATE_DAO_UNSUCCESSFUL")]
     fn test_create_dao_fail() {
-        let context = get_context();
+        let mut context = get_context();
         let mut contract = get_contract();
+        let signer_pk = get_signer_pk();
 
-        let country_code = "gt".to_string();
+        testing_env!(context
+            .signer_account_pk(signer_pk.clone())
+            .signer_account_id(bob())
+            .attached_deposit(ATTACHED_DEPOSIT)
+            .build());
 
-        contract.create_dao(country_code.clone(), vec![(bob(), 1000)]);
+        let dao_name = "dao1".to_string();
+        contract.create_dao(dao_name.clone(), vec![bob().to_string()]);
 
         testing_env!(
             context.build(),
@@ -259,12 +259,18 @@ mod tests {
             vec![PromiseResult::Successful("false".to_string().into_bytes())],
         );
 
-        let dao_name = "dao1".to_string();
-        let escrow_account_id: AccountId = "ce1".parse().unwrap();
-
-        contract.on_create_callback(dao_name.clone(), escrow_account_id.clone(), 1);
         assert_eq!(
-            contract.get_dao_by_escrow_account(escrow_account_id.clone()),
+            contract.on_create_dao_callback(
+                env::predecessor_account_id(),
+                dao_name.clone(),
+                U128(1)
+            ),
+            false,
+            "DAO creation should fail"
+        );
+
+        assert_eq!(
+            contract.get_dao_by_escrow_account(env::predecessor_account_id()),
             "",
             "No DAO should be found"
         );
