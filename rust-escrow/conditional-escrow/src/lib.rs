@@ -47,6 +47,11 @@ impl ConditionalEscrow {
         metadata_url: String,
     ) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized");
+
+        if funding_amount_limit.0 < ATTACHED_FT {
+            env::panic_str("ERR_INSUFFICIENT_FUNDS_LIMIT");
+        }
+
         Self {
             deposits: UnorderedMap::new(b"r".to_vec()),
             total_funds: 0,
@@ -185,6 +190,10 @@ impl ConditionalEscrow {
             "ERR_DELEGATE_NOT_ALLOWED"
         );
 
+        if self.total_funds.checked_sub(ATTACHED_FT) == None {
+            env::panic_str("ERR_TOTAL_FUNDS_OVERFLOW");
+        }
+
         // @TODO charge a fee here (1.5% initially?) when a property is sold by our contract
 
         let dao_promise = Promise::new(self.dao_factory_account_id.clone()).function_call(
@@ -192,7 +201,7 @@ impl ConditionalEscrow {
             json!({"dao_name": dao_name.clone(), "deposits": self.get_deposit_accounts() })
                 .to_string()
                 .into_bytes(),
-            self.total_funds - ATTACHED_FT - ATTACHED_PROPOSAL,
+            self.total_funds - ATTACHED_FT,
             GAS_FOR_CREATE_DAO,
         );
 
@@ -319,6 +328,25 @@ mod tests {
     fn substract_expires_at_nanos(offset: u32) -> u64 {
         let now = Utc::now().timestamp_subsec_nanos();
         (now - offset).into()
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_INSUFFICIENT_FUNDS_LIMIT")]
+    fn test_new_fail() {
+        let mut context = setup_context();
+
+        testing_env!(context.signer_account_id(bob()).attached_deposit(0).build());
+
+        let expires_at = add_expires_at_nanos(100);
+
+        // Should fail because insufficient funds limit
+        ConditionalEscrow::new(
+            expires_at,
+            U128(1_000_000_000_000_000_000_000_000), // 1 NEAR
+            accounts(3),
+            accounts(4),
+            "metadata_url.json".to_string(),
+        );
     }
 
     #[test]
