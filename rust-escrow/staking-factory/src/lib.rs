@@ -28,7 +28,10 @@ impl Default for StakingFactory {
 impl StakingFactory {
     #[init]
     pub fn new() -> Self {
-        assert!(!env::state_exists(), "ERR_CONTRACT_ALREADY_INITIALIZED");
+        if env::state_exists() {
+            env::panic_str("ERR_ALREADY_INITIALIZED");
+        }
+        
         Self {
             staking_index: UnorderedMap::new(b"r".to_vec()),
         }

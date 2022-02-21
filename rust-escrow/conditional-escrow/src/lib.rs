@@ -46,7 +46,9 @@ impl ConditionalEscrow {
         ft_factory_account_id: AccountId,
         metadata_url: String,
     ) -> Self {
-        assert!(!env::state_exists(), "The contract is already initialized");
+        if env::state_exists() {
+            env::panic_str("ERR_ALREADY_INITIALIZED");
+        }
 
         if funding_amount_limit.0 < ATTACHED_FT {
             env::panic_str("ERR_INSUFFICIENT_FUNDS_LIMIT");
@@ -126,19 +128,21 @@ impl ConditionalEscrow {
 
     #[payable]
     pub fn deposit(&mut self) {
-        assert_ne!(
-            env::current_account_id(),
-            env::signer_account_id(),
-            "ERR_OWNER_SHOULD_NOT_DEPOSIT"
-        );
+        if env::current_account_id() == env::signer_account_id() {
+            env::panic_str("ERR_OWNER_SHOULD_NOT_DEPOSIT");
+        }
 
-        assert_ne!(env::attached_deposit(), 0, "ERR_DEPOSIT_NOT_SHOULD_BE_0");
+        if env::attached_deposit() == 0 {
+            env::panic_str("ERR_DEPOSIT_NOT_SHOULD_BE_0");
+        }
 
-        assert!(self.is_deposit_allowed(), "ERR_DEPOSIT_NOT_ALLOWED");
-        assert!(
-            env::attached_deposit() <= self.get_unpaid_funding_amount(),
-            "ERR_DEPOSIT_NOT_ALLOWED"
-        );
+        if !self.is_deposit_allowed() {
+            env::panic_str("ERR_DEPOSIT_NOT_ALLOWED");
+        }
+
+        if env::attached_deposit() > self.get_unpaid_funding_amount() {
+            env::panic_str("ERR_DEPOSIT_NOT_ALLOWED");
+        }
 
         let amount = env::attached_deposit();
         let payee = env::signer_account_id();
@@ -162,7 +166,9 @@ impl ConditionalEscrow {
 
     #[payable]
     pub fn withdraw(&mut self) {
-        assert!(self.is_withdrawal_allowed(), "ERR_WITHDRAWAL_NOT_ALLOWED");
+        if !self.is_withdrawal_allowed() {
+            env::panic_str("ERR_WITHDRAWAL_NOT_ALLOWED");
+        }
 
         let payee = env::signer_account_id();
         let payment = self.deposits_of(&payee);
@@ -185,10 +191,9 @@ impl ConditionalEscrow {
 
     #[payable]
     pub fn delegate_funds(&mut self, dao_name: String) -> Promise {
-        assert!(
-            !(self.is_deposit_allowed() || self.is_withdrawal_allowed()),
-            "ERR_DELEGATE_NOT_ALLOWED"
-        );
+        if self.is_deposit_allowed() || self.is_withdrawal_allowed() {
+            env::panic_str("ERR_DELEGATE_NOT_ALLOWED");
+        }
 
         if self.total_funds.checked_sub(ATTACHED_FT) == None {
             env::panic_str("ERR_TOTAL_FUNDS_OVERFLOW");
@@ -228,7 +233,9 @@ impl ConditionalEscrow {
 
     #[private]
     pub fn on_delegate_callback(&mut self, dao_name: String) -> bool {
-        assert_eq!(env::promise_results_count(), 2, "ERR_CALLBACK_METHOD");
+        if env::promise_results_count() != 2 {
+            env::panic_str("ERR_CALLBACK_METHOD");
+        }
 
         let on_create_dao_successful;
         let on_create_ft_successful;

@@ -28,7 +28,10 @@ impl Default for EscrowFactory {
 impl EscrowFactory {
     #[init]
     pub fn new() -> Self {
-        assert!(!env::state_exists(), "The contract is already initialized");
+        if env::state_exists() {
+            env::panic_str("ERR_ALREADY_INITIALIZED");
+        }
+        
         Self {
             conditional_escrow_contracts: UnorderedSet::new(b"d".to_vec()),
         }

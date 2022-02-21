@@ -33,7 +33,10 @@ impl Ft {
         escrow_account_id: AccountId,
         metadata: FungibleTokenMetadata,
     ) -> Self {
-        assert!(!env::state_exists(), "ERR_ALREADY_INITIALIZED");
+        if env::state_exists() {
+            env::panic_str("ERR_ALREADY_INITIALIZED");
+        }
+
         metadata.assert_valid();
         Self {
             max_supply,

@@ -31,7 +31,10 @@ impl Default for FtFactory {
 impl FtFactory {
     #[init]
     pub fn new() -> Self {
-        assert!(!env::state_exists(), "ERR_CONTRACT_ALREADY_INITIALIZED");
+        if env::state_exists() {
+            env::panic_str("ERR_ALREADY_INITIALIZED");
+        }
+        
         Self {
             ft_index: UnorderedMap::new(b"r".to_vec()),
         }
