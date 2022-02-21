@@ -12,8 +12,7 @@ pub const GAS_FOR_PROPOSAL: Gas = Gas(25_000_000_000_000);
 pub const GAS_FOR_CALLBACK: Gas = Gas(2_000_000_000_000);
 
 // Attached deposits
-pub const ATTACHED_FT: Balance = 5_000_000_000_000_000_000_000_000; // 5 Near
-pub const ATTACHED_PROPOSAL: Balance = 100_000_000_000_000_000_000_000; // 0.1 Near
+pub const FT_ATTACHED_DEPOSIT: Balance = 5_000_000_000_000_000_000_000_000; // 5 Near
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
@@ -50,7 +49,7 @@ impl ConditionalEscrow {
             env::panic_str("ERR_ALREADY_INITIALIZED");
         }
 
-        if funding_amount_limit.0 < ATTACHED_FT {
+        if funding_amount_limit.0 < FT_ATTACHED_DEPOSIT {
             env::panic_str("ERR_INSUFFICIENT_FUNDS_LIMIT");
         }
 
@@ -133,7 +132,7 @@ impl ConditionalEscrow {
         }
 
         if env::attached_deposit() == 0 {
-            env::panic_str("ERR_DEPOSIT_NOT_SHOULD_BE_0");
+            env::panic_str("ERR_DEPOSIT_SHOULD_NOT_BE_0");
         }
 
         if !self.is_deposit_allowed() {
@@ -195,7 +194,7 @@ impl ConditionalEscrow {
             env::panic_str("ERR_DELEGATE_NOT_ALLOWED");
         }
 
-        if self.total_funds.checked_sub(ATTACHED_FT) == None {
+        if self.total_funds.checked_sub(FT_ATTACHED_DEPOSIT) == None {
             env::panic_str("ERR_TOTAL_FUNDS_OVERFLOW");
         }
 
@@ -206,14 +205,14 @@ impl ConditionalEscrow {
             json!({"dao_name": dao_name.clone(), "deposits": self.get_deposit_accounts() })
                 .to_string()
                 .into_bytes(),
-            self.total_funds - ATTACHED_FT,
+            self.total_funds - FT_ATTACHED_DEPOSIT,
             GAS_FOR_CREATE_DAO,
         );
 
         let ft_promise = Promise::new(self.ft_factory_account_id.clone()).function_call(
             "create_ft".to_string(),
             json!({"name": dao_name.clone()}).to_string().into_bytes(),
-            ATTACHED_FT,
+            FT_ATTACHED_DEPOSIT,
             GAS_FOR_CREATE_FT,
         );
 
@@ -637,7 +636,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "ERR_DEPOSIT_NOT_SHOULD_BE_0")]
+    #[should_panic(expected = "ERR_DEPOSIT_SHOULD_NOT_BE_0")]
     fn test_deposits() {
         let mut context = setup_context();
 
