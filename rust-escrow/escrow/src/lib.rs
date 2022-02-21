@@ -18,7 +18,10 @@ impl Default for Escrow {
 impl Escrow {
     #[init]
     pub fn new() -> Self {
-        assert!(!env::state_exists(), "The contract is already initialized");
+        if env::state_exists() {
+            env::panic_str("ERR_ALREADY_INITIALIZED");
+        }
+
         Self {
             deposits: LookupMap::new(b"r".to_vec()),
         }
@@ -33,11 +36,9 @@ impl Escrow {
 
     #[payable]
     pub fn deposit(&mut self) {
-        assert_ne!(
-            env::current_account_id(),
-            env::signer_account_id(),
-            "The owner of the contract should not deposit"
-        );
+        if env::current_account_id() == env::signer_account_id() {
+            env::panic_str("ERR_OWNER_SHOULD_NOT_DEPOSIT");
+        }
 
         let amount = env::attached_deposit();
         let payee = env::signer_account_id();
@@ -118,7 +119,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "The owner of the contract should not deposit")]
+    #[should_panic(expected = "ERR_OWNER_SHOULD_NOT_DEPOSIT")]
     fn test_owner_deposit() {
         let (mut context, mut contract) = setup_contract();
 

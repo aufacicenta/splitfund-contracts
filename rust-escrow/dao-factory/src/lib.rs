@@ -26,7 +26,10 @@ impl Default for DaoFactory {
 impl DaoFactory {
     #[init]
     pub fn new(dao_factory_account: AccountId) -> Self {
-        assert!(!env::state_exists(), "The contract is already initialized");
+        if env::state_exists() {
+            env::panic_str("ERR_ALREADY_INITIALIZED");
+        }
+
         Self {
             dao_index: UnorderedMap::new(b"r".to_vec()),
             dao_factory_account,
@@ -84,7 +87,9 @@ impl DaoFactory {
         dao_name: String,
         attached_deposit: U128,
     ) -> bool {
-        assert_eq!(env::promise_results_count(), 1, "ERR_CALLBACK_METHOD");
+        if env::promise_results_count() != 1 {
+            env::panic_str("ERR_CALLBACK_METHOD");
+        }
 
         match env::promise_result(0) {
             PromiseResult::Successful(result) => {

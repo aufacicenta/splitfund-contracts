@@ -12,8 +12,7 @@ pub const GAS_FOR_PROPOSAL: Gas = Gas(25_000_000_000_000);
 pub const GAS_FOR_CALLBACK: Gas = Gas(2_000_000_000_000);
 
 // Attached deposits
-pub const ATTACHED_FT: Balance = 5_000_000_000_000_000_000_000_000; // 5 Near
-pub const ATTACHED_PROPOSAL: Balance = 100_000_000_000_000_000_000_000; // 0.1 Near
+pub const FT_ATTACHED_DEPOSIT: Balance = 5_000_000_000_000_000_000_000_000; // 5 Near
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
@@ -46,7 +45,14 @@ impl ConditionalEscrow {
         ft_factory_account_id: AccountId,
         metadata_url: String,
     ) -> Self {
-        assert!(!env::state_exists(), "The contract is already initialized");
+        if env::state_exists() {
+            env::panic_str("ERR_ALREADY_INITIALIZED");
+        }
+
+        if funding_amount_limit.0 < FT_ATTACHED_DEPOSIT {
+            env::panic_str("ERR_INSUFFICIENT_FUNDS_LIMIT");
+        }
+
         Self {
             deposits: UnorderedMap::new(b"r".to_vec()),
             total_funds: 0,
@@ -121,19 +127,21 @@ impl ConditionalEscrow {
 
     #[payable]
     pub fn deposit(&mut self) {
-        assert_ne!(
-            env::current_account_id(),
-            env::signer_account_id(),
-            "ERR_OWNER_SHOULD_NOT_DEPOSIT"
-        );
+        if env::current_account_id() == env::signer_account_id() {
+            env::panic_str("ERR_OWNER_SHOULD_NOT_DEPOSIT");
+        }
 
-        assert_ne!(env::attached_deposit(), 0, "ERR_DEPOSIT_NOT_SHOULD_BE_0");
+        if env::attached_deposit() == 0 {
+            env::panic_str("ERR_DEPOSIT_SHOULD_NOT_BE_0");
+        }
 
-        assert!(self.is_deposit_allowed(), "ERR_DEPOSIT_NOT_ALLOWED");
-        assert!(
-            env::attached_deposit() <= self.get_unpaid_funding_amount(),
-            "ERR_DEPOSIT_NOT_ALLOWED"
-        );
+        if !self.is_deposit_allowed() {
+            env::panic_str("ERR_DEPOSIT_NOT_ALLOWED");
+        }
+
+        if env::attached_deposit() > self.get_unpaid_funding_amount() {
+            env::panic_str("ERR_DEPOSIT_NOT_ALLOWED");
+        }
 
         let amount = env::attached_deposit();
         let payee = env::signer_account_id();
@@ -157,7 +165,9 @@ impl ConditionalEscrow {
 
     #[payable]
     pub fn withdraw(&mut self) {
-        assert!(self.is_withdrawal_allowed(), "ERR_WITHDRAWAL_NOT_ALLOWED");
+        if !self.is_withdrawal_allowed() {
+            env::panic_str("ERR_WITHDRAWAL_NOT_ALLOWED");
+        }
 
         let payee = env::signer_account_id();
         let payment = self.deposits_of(&payee);
@@ -180,10 +190,13 @@ impl ConditionalEscrow {
 
     #[payable]
     pub fn delegate_funds(&mut self, dao_name: String) -> Promise {
-        assert!(
-            !(self.is_deposit_allowed() || self.is_withdrawal_allowed()),
-            "ERR_DELEGATE_NOT_ALLOWED"
-        );
+        if self.is_deposit_allowed() || self.is_withdrawal_allowed() {
+            env::panic_str("ERR_DELEGATE_NOT_ALLOWED");
+        }
+
+        if self.total_funds.checked_sub(FT_ATTACHED_DEPOSIT) == None {
+            env::panic_str("ERR_TOTAL_FUNDS_OVERFLOW");
+        }
 
         // @TODO charge a fee here (1.5% initially?) when a property is sold by our contract
 
@@ -192,14 +205,14 @@ impl ConditionalEscrow {
             json!({"dao_name": dao_name.clone(), "deposits": self.get_deposit_accounts() })
                 .to_string()
                 .into_bytes(),
-            self.total_funds - ATTACHED_FT - ATTACHED_PROPOSAL,
+            self.total_funds - FT_ATTACHED_DEPOSIT,
             GAS_FOR_CREATE_DAO,
         );
 
         let ft_promise = Promise::new(self.ft_factory_account_id.clone()).function_call(
             "create_ft".to_string(),
             json!({"name": dao_name.clone()}).to_string().into_bytes(),
-            ATTACHED_FT,
+            FT_ATTACHED_DEPOSIT,
             GAS_FOR_CREATE_FT,
         );
 
@@ -219,7 +232,9 @@ impl ConditionalEscrow {
 
     #[private]
     pub fn on_delegate_callback(&mut self, dao_name: String) -> bool {
-        assert_eq!(env::promise_results_count(), 2, "ERR_CALLBACK_METHOD");
+        if env::promise_results_count() != 2 {
+            env::panic_str("ERR_CALLBACK_METHOD");
+        }
 
         let on_create_dao_successful;
         let on_create_ft_successful;
@@ -319,6 +334,25 @@ mod tests {
     fn substract_expires_at_nanos(offset: u32) -> u64 {
         let now = Utc::now().timestamp_subsec_nanos();
         (now - offset).into()
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_INSUFFICIENT_FUNDS_LIMIT")]
+    fn test_new_fail() {
+        let mut context = setup_context();
+
+        testing_env!(context.signer_account_id(bob()).attached_deposit(0).build());
+
+        let expires_at = add_expires_at_nanos(100);
+
+        // Should fail because insufficient funds limit
+        ConditionalEscrow::new(
+            expires_at,
+            U128(1_000_000_000_000_000_000_000_000), // 1 NEAR
+            accounts(3),
+            accounts(4),
+            "metadata_url.json".to_string(),
+        );
     }
 
     #[test]
@@ -602,7 +636,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "ERR_DEPOSIT_NOT_SHOULD_BE_0")]
+    #[should_panic(expected = "ERR_DEPOSIT_SHOULD_NOT_BE_0")]
     fn test_deposits() {
         let mut context = setup_context();
 
