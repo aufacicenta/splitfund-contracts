@@ -53,6 +53,7 @@ impl FtFactory {
             .parse()
             .unwrap();
         let predecessor_account_id = env::predecessor_account_id();
+        let symbol = format!("NHA{}", self.ft_index.len() + 1);
 
         let promise = Promise::new(ft_account_id.clone())
             .create_account()
@@ -61,7 +62,7 @@ impl FtFactory {
             .deploy_contract(FT_CODE.to_vec())
             .function_call(
                 "new".to_string(),
-                json!({"max_supply": FT_SUPPLY.to_string(), "escrow_account_id": predecessor_account_id, "metadata": { "spec": "ft-1.0.0", "name": name.clone(), "symbol": "", "decimals": 8 }})
+                json!({"max_supply": FT_SUPPLY.to_string(), "escrow_account_id": predecessor_account_id, "metadata": { "spec": "ft-1.0.0", "name": name, "symbol": symbol, "decimals": 8 }})
                     .to_string()
                     .into_bytes(),
                 0,
