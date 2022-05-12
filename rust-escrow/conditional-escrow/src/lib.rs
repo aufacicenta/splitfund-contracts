@@ -1,5 +1,5 @@
-pub mod structs;
-pub use structs::*;
+pub mod storage;
+pub use storage::*;
 
 pub mod consts;
 pub use consts::*;

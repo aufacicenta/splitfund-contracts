@@ -5,7 +5,7 @@ use near_sdk::{env, log, near_bindgen};
 use near_sdk::{AccountId, Promise};
 
 use crate::consts::*;
-use crate::structs::*;
+use crate::storage::*;
 
 impl Default for ConditionalEscrow {
     fn default() -> Self {

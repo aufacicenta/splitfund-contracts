@@ -1,6 +1,6 @@
 use near_sdk::{env, near_bindgen, PromiseResult};
 
-use crate::structs::*;
+use crate::storage::*;
 
 #[near_bindgen]
 impl ConditionalEscrow {

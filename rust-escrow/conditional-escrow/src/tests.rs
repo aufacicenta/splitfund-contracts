@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::structs::ConditionalEscrow;
+    use crate::storage::ConditionalEscrow;
     use chrono::Utc;
     use near_sdk::json_types::U128;
     use near_sdk::test_utils::test_env::{alice, bob, carol};
