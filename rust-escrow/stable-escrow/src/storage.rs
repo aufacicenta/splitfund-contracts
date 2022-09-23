@@ -10,7 +10,6 @@ use near_sdk::{
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct ConditionalEscrow {
     pub deposits: UnorderedMap<AccountId, Balance>,
-    pub total_funds: Balance,
     pub metadata: Metadata,
 }
 

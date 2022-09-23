@@ -22,6 +22,7 @@ impl ConditionalEscrow {
         self.deposits.to_vec()
     }
 
+    // @TODO call the NEP141 contract to get balance and compare
     pub fn get_total_funds(&self) -> Balance {
         self.total_funds
     }
