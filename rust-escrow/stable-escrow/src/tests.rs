@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::storage::ConditionalEscrow;
+    use crate::storage::Escrow;
     use chrono::Utc;
     use near_sdk::json_types::U128;
     use near_sdk::test_utils::test_env::{alice, bob, carol};
@@ -21,8 +21,8 @@ mod tests {
         context
     }
 
-    fn setup_contract(expires_at: u64, funding_amount_limit: u128) -> ConditionalEscrow {
-        let contract = ConditionalEscrow::new(
+    fn setup_contract(expires_at: u64, funding_amount_limit: u128) -> Escrow {
+        let contract = Escrow::new(
             expires_at,
             U128(funding_amount_limit),
             accounts(3),
@@ -53,7 +53,7 @@ mod tests {
         let expires_at = add_expires_at_nanos(100);
 
         // Should fail because insufficient funds limit
-        ConditionalEscrow::new(
+        Escrow::new(
             expires_at,
             U128(1_000_000_000_000_000_000_000_000), // 1 NEAR
             accounts(3),

@@ -8,7 +8,7 @@ use near_sdk::{
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
-pub struct ConditionalEscrow {
+pub struct Escrow {
     pub deposits: UnorderedMap<AccountId, Balance>,
     pub metadata: Metadata,
 }

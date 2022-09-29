@@ -8,7 +8,7 @@ pub trait FungibleTokenReceiver {
 }
 
 #[near_bindgen]
-impl FungibleTokenReceiver for ConditionalEscrow {
+impl FungibleTokenReceiver for Escrow {
     /**
      * @notice a callback function only callable by the collateral token for this market
      * @param sender_id the sender of the original transaction

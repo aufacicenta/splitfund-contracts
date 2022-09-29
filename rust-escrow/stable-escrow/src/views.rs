@@ -3,7 +3,7 @@ use near_sdk::{env, near_bindgen, AccountId, Balance};
 use crate::storage::*;
 
 #[near_bindgen]
-impl ConditionalEscrow {
+impl Escrow {
     pub fn deposits_of(&self, payee: &AccountId) -> Balance {
         match self.deposits.get(payee) {
             Some(deposit) => deposit,

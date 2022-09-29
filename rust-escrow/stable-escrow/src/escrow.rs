@@ -3,17 +3,17 @@ use near_sdk::{
     AccountId, Balance, Promise,
 };
 
-use crate::consts::*;
+//use crate::consts::*;
 use crate::storage::*;
 
-impl Default for ConditionalEscrow {
+impl Default for Escrow {
     fn default() -> Self {
-        env::panic_str("ConditionalEscrow should be initialized before usage")
+        env::panic_str("Escrow Contract should be initialized before usage")
     }
 }
 
 #[near_bindgen]
-impl ConditionalEscrow {
+impl Escrow {
     #[init]
     pub fn new(metadata: Metadata) -> Self {
         if env::state_exists() {
@@ -22,13 +22,11 @@ impl ConditionalEscrow {
 
         Self {
             deposits: UnorderedMap::new(b"r".to_vec()),
-            metadata: Metadata {
-                dao_name: None,
-                ..metadata
-            },
+            metadata,
         }
     }
 
+    /*
     /**
      * Called by anyone only once, this creates the NEP141 own token to be transfered in exchange of the stable NEP141 deposits
      */
@@ -120,4 +118,5 @@ impl ConditionalEscrow {
 
         dao_promise.then(callback)
     }
+    */
 }
