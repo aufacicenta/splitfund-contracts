@@ -25,10 +25,10 @@ impl FungibleTokenReceiver for Escrow {
         let amount: Balance = amount.parse::<Balance>().unwrap();
         assert!(amount > 0, "ERR_ZERO_AMOUNT");
 
-        let payload: Payload = serde_json::from_str(&msg).expect("ERR_INVALID_PAYLOAD");
+        let payload: Payload = serde_json::from_str(&msg).expect("ERR_INVALID_PAYLOAD_MSG");
 
         match payload {
-            Payload::DepositArgs(payload) => self.deposit(sender_id, amount),
+            Payload::DepositArgs(_payload) => self.deposit(sender_id, amount),
         };
 
         // All the collateral was used, so we should issue no refund on ft_resolve_transfer

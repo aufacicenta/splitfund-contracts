@@ -250,7 +250,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_correct_unpaid_funding_amount() {
+    fn test_get_correct_unpaid_amount() {
         let mut context = setup_context();
 
         testing_env!(context
@@ -266,7 +266,7 @@ mod tests {
 
         assert_eq!(
             MIN_FUNDING_AMOUNT - ATTACHED_DEPOSIT,
-            contract.get_unpaid_funding_amount(),
+            contract.get_unpaid_amount(),
             "Unpaid funding amount is wrong"
         );
     }

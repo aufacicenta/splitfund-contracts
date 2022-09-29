@@ -1,7 +1,7 @@
 use near_sdk::{
-    collections::{LazyOption, UnorderedMap},
-    env, json_types::U128, log, near_bindgen, serde_json::json,
     AccountId, Balance, Promise, PromiseOrValue,
+    collections::{LazyOption, UnorderedSet},
+    env, json_types::U128, log, near_bindgen, serde_json::json,
 };
 
 use near_contract_standards::fungible_token::{
@@ -27,18 +27,17 @@ impl Escrow {
         }
 
         Self {
-            deposits: UnorderedMap::new(b"d".to_vec()),
+            deposits: UnorderedSet::new(b"d".to_vec()),
             ft: FungibleToken::new(b"t".to_vec()),
             ft_metadata: LazyOption::new(b"m".to_vec(), None),
             metadata,
         }
     }
 
-    /*
     /**
      * Called by anyone only once, this creates the NEP141 own token to be transfered in exchange of the stable NEP141 deposits
      */
-    pub fn publish(&mut self, sender_id: AccountId, amount: Balance) {}
+    pub fn publish(&mut self, _sender_id: AccountId, _amount: Balance) {}
 
     /**
      * Called on ft_transfer_callback only
@@ -54,7 +53,7 @@ impl Escrow {
             env::panic_str("ERR_DEPOSIT_NOT_ALLOWED");
         }
 
-        if amount > self.get_unpaid_funding_amount() {
+        if amount > self.get_unpaid_amount() {
             env::panic_str("ERR_DEPOSIT_NOT_ALLOWED");
         }
 
@@ -62,15 +61,17 @@ impl Escrow {
 
         // @TODO create promise to transfer self NEP141 in exchange of the amount as a receipt, then update storage values
 
-        let current_balance = self.deposits_of(&sender_id);
-        let new_balance = &(current_balance.wrapping_add(amount));
-        self.deposits.insert(&sender_id, new_balance);
-        self.metadata.unpaid_funding_amount =
-            self.metadata.unpaid_funding_amount.wrapping_sub(amount);
+        self.ft.internal_deposit(&sender_id, amount);
+        self.deposits.insert(&sender_id);
+        self.metadata.unpaid_amount = self.
+            metadata.unpaid_amount
+            .checked_sub(amount)
+            .unwrap_or_else(|| env::panic_str("ERR_UNPAID_AMOUNT_OVERFLOW"));
 
         // @TODO log
     }
 
+    /*
     /**
      * Transfer funds from contract NEP141 balance to sender_id
      */
@@ -85,8 +86,8 @@ impl Escrow {
         // @TODO perform ft_transfer from contract to sender, then update storage on promise callback
 
         self.deposits.insert(&payee, &0);
-        self.metadata.unpaid_funding_amount =
-            self.metadata.unpaid_funding_amount.wrapping_add(payment);
+        self.metadata.unpaid_amount =
+            self.metadata.unpaid_amount.wrapping_add(payment);
 
         // @TODO log
     }
