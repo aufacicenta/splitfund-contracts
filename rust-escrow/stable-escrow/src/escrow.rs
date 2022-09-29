@@ -9,7 +9,7 @@ use near_contract_standards::fungible_token::{
     metadata::{FungibleTokenMetadata, FungibleTokenMetadataProvider},
 };
 
-//use crate::consts::*;
+use crate::consts::*;
 use crate::storage::*;
 
 impl Default for Escrow {
@@ -64,34 +64,50 @@ impl Escrow {
         self.ft.internal_deposit(&sender_id, amount);
         self.deposits.insert(&sender_id);
         self.metadata.unpaid_amount = self.
-            metadata.unpaid_amount
-            .checked_sub(amount)
-            .unwrap_or_else(|| env::panic_str("ERR_UNPAID_AMOUNT_OVERFLOW"));
+            metadata.unpaid_amount.
+            checked_sub(amount).
+            unwrap_or_else(|| env::panic_str("ERR_UNPAID_AMOUNT_OVERFLOW"));
 
         // @TODO log
     }
 
-    /*
     /**
      * Transfer funds from contract NEP141 balance to sender_id
      */
-    pub fn withdraw(&mut self) {
+    pub fn withdraw(&mut self) -> Promise {
         if !self.is_withdrawal_allowed() {
             env::panic_str("ERR_WITHDRAWAL_NOT_ALLOWED");
         }
 
         let payee = env::signer_account_id();
-        let payment = self.deposits_of(&payee);
+        let balance = self.ft.internal_unwrap_balance_of(&payee);
 
         // @TODO perform ft_transfer from contract to sender, then update storage on promise callback
 
-        self.deposits.insert(&payee, &0);
-        self.metadata.unpaid_amount =
-            self.metadata.unpaid_amount.wrapping_add(payment);
+        // Update Balances
+        self.ft.internal_deposit(&payee, balance);
+        self.deposits.remove(&payee);
+        self.metadata.unpaid_amount = self.
+            metadata.unpaid_amount.
+            checked_add(balance).
+            unwrap_or_else(|| env::panic_str("ERR_UNPAID_AMOUNT_OVERFLOW"));
 
         // @TODO log
+
+        // Transfer from collateral token to payee
+        Promise::new(self.metadata.nep_141_account_id.clone()).function_call(
+            "ft_transfer".to_string(),
+            json!({
+                "amount": balance.to_string(),
+                "receiver_id": payee.to_string() })
+            .to_string()
+            .into_bytes(),
+            0,
+            GAS_FT_TRANSFER,
+        )
     }
 
+    /*
     /**
      * Only if total funds are reached, allow to call this function
      * Transfer total NEP141 funds to a new DAO

@@ -1,8 +1,8 @@
 pub mod storage;
 pub use storage::*;
 
-//pub mod consts;
-//pub use consts::*;
+pub mod consts;
+pub use consts::*;
 
 pub mod views;
 pub use views::*;

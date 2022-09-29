@@ -22,6 +22,8 @@ impl FungibleTokenReceiver for Escrow {
             env::panic_str("ERR_NOT_INITIALIZED");
         }
 
+        //@TODO check the collateral token account
+        
         let amount: Balance = amount.parse::<Balance>().unwrap();
         assert!(amount > 0, "ERR_ZERO_AMOUNT");
 

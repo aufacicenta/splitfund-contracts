@@ -9,3 +9,6 @@ pub const GAS_FOR_CALLBACK: Gas = Gas(2_000_000_000_000);
 
 // Attached deposits
 pub const FT_ATTACHED_DEPOSIT: Balance = 5_000_000_000_000_000_000_000_000; // 5 Near
+
+// FT
+pub const GAS_FT_TRANSFER: Gas = Gas(2_000_000_000_000);
