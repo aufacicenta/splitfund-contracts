@@ -1,6 +1,12 @@
 use near_sdk::{
-    collections::UnorderedMap, env, json_types::U128, log, near_bindgen, serde_json::json,
-    AccountId, Balance, Promise,
+    collections::{LazyOption, UnorderedMap},
+    env, json_types::U128, log, near_bindgen, serde_json::json,
+    AccountId, Balance, Promise, PromiseOrValue,
+};
+
+use near_contract_standards::fungible_token::{
+    FungibleToken,
+    metadata::{FungibleTokenMetadata, FungibleTokenMetadataProvider},
 };
 
 //use crate::consts::*;
@@ -21,7 +27,9 @@ impl Escrow {
         }
 
         Self {
-            deposits: UnorderedMap::new(b"r".to_vec()),
+            deposits: UnorderedMap::new(b"d".to_vec()),
+            ft: FungibleToken::new(b"t".to_vec()),
+            ft_metadata: LazyOption::new(b"m".to_vec(), None),
             metadata,
         }
     }
@@ -119,4 +127,14 @@ impl Escrow {
         dao_promise.then(callback)
     }
     */
+}
+
+near_contract_standards::impl_fungible_token_core!(Escrow, ft);
+near_contract_standards::impl_fungible_token_storage!(Escrow, ft);
+
+#[near_bindgen]
+impl FungibleTokenMetadataProvider for Escrow {
+    fn ft_metadata(&self) -> FungibleTokenMetadata {
+        self.ft_metadata.get().unwrap()
+    }
 }

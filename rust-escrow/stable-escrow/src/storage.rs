@@ -1,15 +1,22 @@
 use near_sdk::{
     borsh::{self, BorshDeserialize, BorshSerialize},
-    collections::UnorderedMap,
+    collections::{LazyOption, UnorderedMap},
     near_bindgen,
     serde::{Deserialize, Serialize},
     AccountId, Balance,
+};
+
+use near_contract_standards::fungible_token::{
+    FungibleToken,
+    metadata::FungibleTokenMetadata,
 };
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct Escrow {
     pub deposits: UnorderedMap<AccountId, Balance>,
+    pub ft: FungibleToken,
+    pub ft_metadata: LazyOption<FungibleTokenMetadata>,
     pub metadata: Metadata,
 }
 
