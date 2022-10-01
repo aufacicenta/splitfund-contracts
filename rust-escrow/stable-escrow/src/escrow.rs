@@ -21,23 +21,36 @@ impl Default for Escrow {
 #[near_bindgen]
 impl Escrow {
     #[init]
-    pub fn new(metadata: Metadata) -> Self {
+    pub fn new(
+        expires_at: u64,
+        funding_amount_limit: U128,
+        nep_141_account_id: AccountId,
+        dao_factory_account_id: AccountId,
+        metadata_url: String,
+    ) -> Self {
         if env::state_exists() {
             env::panic_str("ERR_ALREADY_INITIALIZED");
         }
 
+        //@TODO Define ft_metadata (token name, token symbol, decimals)
+
+        let mut token = FungibleToken::new(b"t".to_vec());
+        token.total_supply = funding_amount_limit.0;
+
         Self {
             deposits: UnorderedSet::new(b"d".to_vec()),
-            ft: FungibleToken::new(b"t".to_vec()),
+            ft: token,
             ft_metadata: LazyOption::new(b"m".to_vec(), None),
-            metadata,
+            metadata: Metadata {
+                expires_at,
+                funding_amount_limit: funding_amount_limit.0,
+                unpaid_amount: funding_amount_limit.0,
+                nep_141_account_id,
+                dao_factory_account_id,
+                metadata_url
+            }
         }
     }
-
-    /**
-     * Called by anyone only once, this creates the NEP141 own token to be transfered in exchange of the stable NEP141 deposits
-     */
-    pub fn publish(&mut self, _sender_id: AccountId, _amount: Balance) {}
 
     /**
      * Called on ft_transfer_callback only
@@ -57,10 +70,6 @@ impl Escrow {
             env::panic_str("ERR_DEPOSIT_NOT_ALLOWED");
         }
 
-        // @TODO charge fee?
-
-        // @TODO create promise to transfer self NEP141 in exchange of the amount as a receipt, then update storage values
-
         self.ft.internal_deposit(&sender_id, amount);
         self.deposits.insert(&sender_id);
         self.metadata.unpaid_amount = self.
@@ -73,38 +82,38 @@ impl Escrow {
 
     /**
      * Transfer funds from contract NEP141 balance to sender_id
-     */
+    */
+    #[payable]
     pub fn withdraw(&mut self) -> Promise {
         if !self.is_withdrawal_allowed() {
             env::panic_str("ERR_WITHDRAWAL_NOT_ALLOWED");
         }
 
         let payee = env::signer_account_id();
-        let balance = self.ft.internal_unwrap_balance_of(&payee);
-
-        // @TODO perform ft_transfer from contract to sender, then update storage on promise callback
-
-        // Update Balances
-        self.ft.internal_deposit(&payee, balance);
-        self.deposits.remove(&payee);
-        self.metadata.unpaid_amount = self.
-            metadata.unpaid_amount.
-            checked_add(balance).
-            unwrap_or_else(|| env::panic_str("ERR_UNPAID_AMOUNT_OVERFLOW"));
-
-        // @TODO log
+        let balance = self.ft.internal_unwrap_balance_of(&payee);        
 
         // Transfer from collateral token to payee
-        Promise::new(self.metadata.nep_141_account_id.clone()).function_call(
+        let promise = Promise::new(self.metadata.nep_141_account_id.clone()).function_call(
             "ft_transfer".to_string(),
             json!({
                 "amount": balance.to_string(),
-                "receiver_id": payee.to_string() })
-            .to_string()
-            .into_bytes(),
-            0,
+                "receiver_id": payee.to_string(),
+            }).to_string().into_bytes(),
+            1, // 1 yoctoNEAR
             GAS_FT_TRANSFER,
-        )
+        );
+
+        let callback = Promise::new(env::current_account_id()).function_call(
+            "on_withdraw_callback".to_string(),
+            json!({
+                "payee": payee.to_string(),
+                "balance": balance.to_string(),
+            }).to_string().into_bytes(),
+            0,
+            GAS_FT_WITHDRAW_CALLBACK,
+        );
+
+        promise.then(callback)
     }
 
     /*

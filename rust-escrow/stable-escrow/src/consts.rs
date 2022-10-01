@@ -12,3 +12,4 @@ pub const FT_ATTACHED_DEPOSIT: Balance = 5_000_000_000_000_000_000_000_000; // 5
 
 // FT
 pub const GAS_FT_TRANSFER: Gas = Gas(2_000_000_000_000);
+pub const GAS_FT_WITHDRAW_CALLBACK: Gas = Gas(2_000_000_000_000);

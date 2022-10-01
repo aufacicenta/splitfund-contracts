@@ -50,17 +50,15 @@ impl Escrow {
         self.metadata.dao_factory_account_id.clone()
     }
 
-    pub fn get_ft_factory_account_id(&self) -> AccountId {
-        self.metadata.ft_factory_account_id.clone()
-    }
-
+    /*
     pub fn get_dao_name(&self) -> String {
         "".to_string()
-        /*match self.metadata.dao_name.unwrap() {
+        match self.metadata.dao_name.unwrap() {
             Some(name) => name,
             None => env::panic_str("ERR_DAO_NAME_NOT_SET"),
-        }*/
+        }
     }
+    */
 
     pub fn is_deposit_allowed(&self) -> bool {
         !self.has_contract_expired() && !self.is_funding_reached()

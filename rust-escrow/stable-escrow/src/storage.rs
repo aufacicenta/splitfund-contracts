@@ -27,15 +27,6 @@ pub struct Metadata {
     pub unpaid_amount: u128,
     pub nep_141_account_id: AccountId,
     pub dao_factory_account_id: AccountId,
-    pub ft_factory_account_id: AccountId,
-    pub dao_name: Option<String>,
     pub metadata_url: String,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct DepositArgs {}
-
-#[derive(Serialize, Deserialize)]
-pub enum Payload {
-    DepositArgs(DepositArgs),
-}

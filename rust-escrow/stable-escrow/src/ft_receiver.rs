@@ -1,4 +1,4 @@
-use near_sdk::{env, near_bindgen, serde_json, AccountId, Balance};
+use near_sdk::{env, near_bindgen, AccountId, Balance};
 
 use crate::*;
 
@@ -22,16 +22,14 @@ impl FungibleTokenReceiver for Escrow {
             env::panic_str("ERR_NOT_INITIALIZED");
         }
 
-        //@TODO check the collateral token account
+        if env::predecessor_account_id() != self.metadata.nep_141_account_id {
+            env::panic_str("ERR_WRONG_NEP141");
+        }
         
         let amount: Balance = amount.parse::<Balance>().unwrap();
         assert!(amount > 0, "ERR_ZERO_AMOUNT");
 
-        let payload: Payload = serde_json::from_str(&msg).expect("ERR_INVALID_PAYLOAD_MSG");
-
-        match payload {
-            Payload::DepositArgs(_payload) => self.deposit(sender_id, amount),
-        };
+        self.deposit(sender_id, amount);
 
         // All the collateral was used, so we should issue no refund on ft_resolve_transfer
         return "0".to_string();
