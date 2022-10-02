@@ -1,7 +1,7 @@
 use near_sdk::{
     AccountId, Balance, Promise, PromiseOrValue,
     collections::{LazyOption, UnorderedSet},
-    env, json_types::U128, log, near_bindgen, serde_json::json,
+    env, json_types::U128, near_bindgen, serde_json::json,
 };
 
 use near_contract_standards::fungible_token::{
@@ -22,8 +22,10 @@ impl Default for Escrow {
 impl Escrow {
     #[init]
     pub fn new(
+        decimals: u8,
         expires_at: u64,
         funding_amount_limit: U128,
+        id: String,
         nep_141_account_id: AccountId,
         dao_factory_account_id: AccountId,
         metadata_url: String,
@@ -32,7 +34,16 @@ impl Escrow {
             env::panic_str("ERR_ALREADY_INITIALIZED");
         }
 
-        //@TODO Define ft_metadata (token name, token symbol, decimals)
+        let id = format!("SA{}", id);
+        let ft_metadata = FungibleTokenMetadata { 
+            spec: "ft-1.0.0".to_string(),
+            name: id.clone(),
+            symbol: id.clone(),
+            icon: None,
+            reference: None,
+            reference_hash: None,
+            decimals: decimals,
+        };
 
         let mut token = FungibleToken::new(b"t".to_vec());
         token.total_supply = funding_amount_limit.0;
@@ -40,7 +51,7 @@ impl Escrow {
         Self {
             deposits: UnorderedSet::new(b"d".to_vec()),
             ft: token,
-            ft_metadata: LazyOption::new(b"m".to_vec(), None),
+            ft_metadata: LazyOption::new(b"m".to_vec(), Some(&ft_metadata)),
             metadata: Metadata {
                 expires_at,
                 funding_amount_limit: funding_amount_limit.0,
