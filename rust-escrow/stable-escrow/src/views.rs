@@ -3,31 +3,15 @@ use near_sdk::{env, near_bindgen, AccountId, Balance};
 use crate::storage::*;
 
 #[near_bindgen]
-impl Escrow {
-    /*
-    pub fn deposits_of(&self, payee: &AccountId) -> Balance {
-        match self.deposits.get(payee) {
-            Some(deposit) => deposit,
-            None => 0,
-        }
-    }
-    
+impl Escrow {    
+    /* You can use ft_balance_of instead
     pub fn get_shares_of(&self, payee: &AccountId) -> Balance {
-        match self.deposits.get(payee) {
-            Some(deposit) => deposit * 1000 / self.metadata.funding_amount_limit,
-            None => 0,
-        }
-    }
-
-    pub fn get_deposits(&self) -> Vec<(AccountId, Balance)> {
-        self.deposits.to_vec()
+        self.ft.internal_unwrap_balance_of(payee)
     }
     */
 
-    // @TODO call the NEP141 contract to get balance and compare
     pub fn get_total_funds(&self) -> Balance {
-        //self.total_funds
-        0
+        self.metadata.funding_amount_limit - self.metadata.unpaid_amount
     }
 
     pub fn get_metadata_url(&self) -> String {
@@ -49,16 +33,6 @@ impl Escrow {
     pub fn get_dao_factory_account_id(&self) -> AccountId {
         self.metadata.dao_factory_account_id.clone()
     }
-
-    /*
-    pub fn get_dao_name(&self) -> String {
-        "".to_string()
-        match self.metadata.dao_name.unwrap() {
-            Some(name) => name,
-            None => env::panic_str("ERR_DAO_NAME_NOT_SET"),
-        }
-    }
-    */
 
     pub fn is_deposit_allowed(&self) -> bool {
         !self.has_contract_expired() && !self.is_funding_reached()

@@ -101,7 +101,7 @@ impl Escrow {
         }
 
         let payee = env::signer_account_id();
-        let balance = self.ft.internal_unwrap_balance_of(&payee);        
+        let balance = self.ft.internal_unwrap_balance_of(&payee);
 
         // Transfer from collateral token to payee
         let promise = Promise::new(self.metadata.nep_141_account_id.clone()).function_call(
