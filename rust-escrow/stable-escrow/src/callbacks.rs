@@ -1,4 +1,4 @@
-use near_sdk::{AccountId, Balance, env, near_bindgen, PromiseResult};
+use near_sdk::{env, near_bindgen, AccountId, Balance, PromiseResult};
 
 use crate::storage::*;
 
@@ -12,15 +12,16 @@ impl Escrow {
 
                 self.ft.internal_withdraw(&payee, balance);
                 self.deposits.remove(&payee);
-                self.metadata.unpaid_amount = self.
-                    metadata.unpaid_amount.
-                    checked_add(balance).
-                    unwrap_or_else(|| env::panic_str("ERR_UNPAID_AMOUNT_OVERFLOW"));
-                
+                self.metadata.unpaid_amount = self
+                    .metadata
+                    .unpaid_amount
+                    .checked_add(balance)
+                    .unwrap_or_else(|| env::panic_str("ERR_UNPAID_AMOUNT_OVERFLOW"));
+
                 // @TODO log
 
                 balance
-            },
+            }
             _ => env::panic_str("ERR_WITHDRAW_UNSUCCESSFUL"),
         }
     }

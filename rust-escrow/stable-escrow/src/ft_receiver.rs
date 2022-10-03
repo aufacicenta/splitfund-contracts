@@ -4,7 +4,7 @@ use crate::*;
 
 pub trait FungibleTokenReceiver {
     // @returns amount of unused tokens
-    fn ft_on_transfer(&mut self, sender_id: AccountId, amount: String, msg: String) -> String;
+    fn ft_on_transfer(&mut self, sender_id: AccountId, amount: String) -> String;
 }
 
 #[near_bindgen]
@@ -17,7 +17,7 @@ impl FungibleTokenReceiver for Escrow {
      * @returns the amount of tokens that were not spent
      */
     #[payable]
-    fn ft_on_transfer(&mut self, sender_id: AccountId, amount: String, msg: String) -> String {
+    fn ft_on_transfer(&mut self, sender_id: AccountId, amount: String) -> String {
         if !env::state_exists() {
             env::panic_str("ERR_NOT_INITIALIZED");
         }
@@ -25,7 +25,7 @@ impl FungibleTokenReceiver for Escrow {
         if env::predecessor_account_id() != self.metadata.nep_141_account_id {
             env::panic_str("ERR_WRONG_NEP141");
         }
-        
+
         let amount: Balance = amount.parse::<Balance>().unwrap();
         assert!(amount > 0, "ERR_ZERO_AMOUNT");
 

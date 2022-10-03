@@ -1,20 +1,17 @@
 use near_sdk::{
-    AccountId,
     borsh::{self, BorshDeserialize, BorshSerialize},
     collections::{LazyOption, UnorderedSet},
     near_bindgen,
     serde::{Deserialize, Serialize},
+    AccountId,
 };
 
-use near_contract_standards::fungible_token::{
-    FungibleToken,
-    metadata::FungibleTokenMetadata,
-};
+use near_contract_standards::fungible_token::{metadata::FungibleTokenMetadata, FungibleToken};
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct Escrow {
-    pub deposits: UnorderedSet<AccountId>, //@TODO Calculate storage for this 
+    pub deposits: UnorderedSet<AccountId>, //@TODO Calculate storage for this
     pub ft: FungibleToken,
     pub ft_metadata: LazyOption<FungibleTokenMetadata>,
     pub metadata: Metadata,
@@ -29,4 +26,3 @@ pub struct Metadata {
     pub dao_factory_account_id: AccountId,
     pub metadata_url: String,
 }
-

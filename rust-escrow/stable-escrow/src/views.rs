@@ -3,7 +3,7 @@ use near_sdk::{env, near_bindgen, AccountId, Balance};
 use crate::storage::*;
 
 #[near_bindgen]
-impl Escrow {    
+impl Escrow {
     /* You can use ft_balance_of instead
     pub fn get_shares_of(&self, payee: &AccountId) -> Balance {
         self.ft.internal_unwrap_balance_of(payee)

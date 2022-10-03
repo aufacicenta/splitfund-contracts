@@ -1,12 +1,15 @@
 use near_sdk::{
-    AccountId, Balance, Promise, PromiseOrValue,
     collections::{LazyOption, UnorderedSet},
-    env, json_types::U128, near_bindgen, serde_json::json,
+    env,
+    json_types::U128,
+    near_bindgen,
+    serde_json::json,
+    AccountId, Balance, Promise, PromiseOrValue,
 };
 
 use near_contract_standards::fungible_token::{
-    FungibleToken,
     metadata::{FungibleTokenMetadata, FungibleTokenMetadataProvider},
+    FungibleToken,
 };
 
 use crate::consts::*;
@@ -35,14 +38,14 @@ impl Escrow {
         }
 
         let id = format!("SA{}", id);
-        let ft_metadata = FungibleTokenMetadata { 
+        let ft_metadata = FungibleTokenMetadata {
             spec: "ft-1.0.0".to_string(),
             name: id.clone(),
             symbol: id.clone(),
             icon: None,
             reference: None,
             reference_hash: None,
-            decimals: decimals,
+            decimals,
         };
 
         let mut token = FungibleToken::new(b"t".to_vec());
@@ -58,8 +61,8 @@ impl Escrow {
                 unpaid_amount: funding_amount_limit.0,
                 nep_141_account_id,
                 dao_factory_account_id,
-                metadata_url
-            }
+                metadata_url,
+            },
         }
     }
 
@@ -83,17 +86,18 @@ impl Escrow {
 
         self.ft.internal_deposit(&sender_id, amount);
         self.deposits.insert(&sender_id);
-        self.metadata.unpaid_amount = self.
-            metadata.unpaid_amount.
-            checked_sub(amount).
-            unwrap_or_else(|| env::panic_str("ERR_UNPAID_AMOUNT_OVERFLOW"));
+        self.metadata.unpaid_amount = self
+            .metadata
+            .unpaid_amount
+            .checked_sub(amount)
+            .unwrap_or_else(|| env::panic_str("ERR_UNPAID_AMOUNT_OVERFLOW"));
 
         // @TODO log
     }
 
     /**
      * Transfer funds from contract NEP141 balance to sender_id
-    */
+     */
     #[payable]
     pub fn withdraw(&mut self) -> Promise {
         if !self.is_withdrawal_allowed() {
@@ -109,7 +113,9 @@ impl Escrow {
             json!({
                 "amount": balance.to_string(),
                 "receiver_id": payee.to_string(),
-            }).to_string().into_bytes(),
+            })
+            .to_string()
+            .into_bytes(),
             1, // 1 yoctoNEAR
             GAS_FT_TRANSFER,
         );
@@ -119,7 +125,9 @@ impl Escrow {
             json!({
                 "payee": payee.to_string(),
                 "balance": balance.to_string(),
-            }).to_string().into_bytes(),
+            })
+            .to_string()
+            .into_bytes(),
             0,
             GAS_FT_WITHDRAW_CALLBACK,
         );
