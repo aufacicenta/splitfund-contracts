@@ -31,7 +31,7 @@ impl Escrow {
     }
 
     pub fn get_dao_factory_account_id(&self) -> AccountId {
-        self.metadata.dao_factory_account_id.clone()
+        self.metadata.dao_factory.clone()
     }
 
     pub fn is_deposit_allowed(&self) -> bool {

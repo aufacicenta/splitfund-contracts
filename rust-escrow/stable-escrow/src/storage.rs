@@ -21,8 +21,10 @@ pub struct Escrow {
 pub struct Metadata {
     pub expires_at: u64,
     pub funding_amount_limit: u128,
+    pub id: String,
     pub unpaid_amount: u128,
-    pub nep_141_account_id: AccountId,
-    pub dao_factory_account_id: AccountId,
+    pub nep_141: AccountId,
+    pub dao_factory: AccountId,
+    pub maintainer: AccountId,
     pub metadata_url: String,
 }

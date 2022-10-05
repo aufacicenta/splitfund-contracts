@@ -25,4 +25,16 @@ impl Escrow {
             _ => env::panic_str("ERR_WITHDRAW_UNSUCCESSFUL"),
         }
     }
+
+    #[private]
+    pub fn on_create_dao_callback(&mut self) -> bool {
+        match env::promise_result(0) {
+            PromiseResult::Successful(_result) => {
+                // @TODO log
+
+                true
+            }
+            _ => env::panic_str("ERR_CREATE_DAO_UNSUCCESSFUL"),
+        }
+    }
 }
