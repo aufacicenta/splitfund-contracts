@@ -4,12 +4,6 @@ use crate::storage::*;
 
 #[near_bindgen]
 impl Escrow {
-    /* You can use ft_balance_of instead
-    pub fn get_shares_of(&self, payee: &AccountId) -> Balance {
-        self.ft.internal_unwrap_balance_of(payee)
-    }
-    */
-
     pub fn get_total_funds(&self) -> Balance {
         self.metadata.funding_amount_limit - self.metadata.unpaid_amount
     }
