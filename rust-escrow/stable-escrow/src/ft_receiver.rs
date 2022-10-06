@@ -17,7 +17,7 @@ impl FungibleTokenReceiver for Escrow {
      * @returns the amount of tokens that were not spent
      */
     #[payable]
-    fn ft_on_transfer(&mut self, sender_id: AccountId, amount: String, msg: String) -> String {
+    fn ft_on_transfer(&mut self, sender_id: AccountId, amount: String, _msg: String) -> String {
         if !env::state_exists() {
             env::panic_str("ERR_NOT_INITIALIZED");
         }

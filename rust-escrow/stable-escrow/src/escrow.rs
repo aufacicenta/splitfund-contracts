@@ -1,7 +1,7 @@
 use near_sdk::{
     collections::{LazyOption, UnorderedSet},
     env,
-    json_types::{U128, Base64VecU8},
+    json_types::{Base64VecU8, U128},
     near_bindgen,
     serde_json::json,
     AccountId, Balance, Promise, PromiseOrValue,
@@ -138,12 +138,6 @@ impl Escrow {
         promise.then(callback)
     }
 
-    fn get_dao_config(&self, name: String, accounts: Vec<String>) -> Vec<u8> {
-        json!({ "policy": { "roles": [ { "name": "Council", "kind": { "Group": accounts }, "permissions": [ "*:*" ], "vote_policy": {} }, { "name": "all", "kind": "Everyone", "permissions": [ "*:AddProposal" ], "vote_policy": {} } ], "default_vote_policy": { "weight_kind": "RoleWeight", "quorum": "0", "threshold": [ 1, 2 ] }, "proposal_bond": "100000000000000000000000", "proposal_period": "604800000000000", "bounty_bond": "100000000000000000000000", "bounty_forgiveness_period": "604800000000000" }, "config": { "name": name, "purpose": "", "metadata": "" } })
-            .to_string()
-            .into_bytes()
-    }
-
     /**
      * Only if total funds are reached, allow to call this function
      * Transfer total NEP141 funds to a new DAO
@@ -160,9 +154,10 @@ impl Escrow {
         // @TODO charge a fee here (1.5% initially?) when a property is sold by our contract
 
         let dao_name = format!("sa{}", self.metadata.id);
-        let args = self.get_dao_config(dao_name.clone(), vec![ self.metadata.maintainer.to_string() ]);
+        let args =
+            self.get_dao_config(dao_name.clone(), vec![self.metadata.maintainer.to_string()]);
 
-        let promise = Promise::new(self.metadata.dao_factory.clone()).function_call(
+        let promise = Promise::new(self.get_dao_factory_account_id()).function_call(
             "create".to_string(),
             json!({"name": dao_name.clone(), "args": Base64VecU8(args) })
                 .to_string()
@@ -173,14 +168,51 @@ impl Escrow {
 
         let callback = Promise::new(env::current_account_id()).function_call(
             "on_create_dao_callback".to_string(),
-            json!({})
-                .to_string()
-                .into_bytes(),
+            json!({}).to_string().into_bytes(),
             0,
             GAS_FOR_CREATE_DAO_CB,
         );
 
         promise.then(callback)
+    }
+}
+
+impl Escrow {
+    fn get_dao_config(&self, name: String, accounts: Vec<String>) -> Vec<u8> {
+        json!({
+            "policy": {
+                "roles": [
+                    {
+                        "name": "Council",
+                        "kind": { "Group": accounts },
+                        "permissions": [ "*:*" ],
+                        "vote_policy": {}
+                    },
+                    {
+                        "name": "all",
+                        "kind": "Everyone",
+                        "permissions": [ "*:AddProposal" ],
+                        "vote_policy": {}
+                    }
+                ],
+                "default_vote_policy": {
+                    "weight_kind": "RoleWeight",
+                    "quorum": "0",
+                    "threshold": [ 1, 2 ]
+                },
+                "proposal_bond": "100000000000000000000000",
+                "proposal_period": "604800000000000",
+                "bounty_bond": "100000000000000000000000",
+                "bounty_forgiveness_period": "604800000000000"
+            },
+            "config": {
+                "name": name,
+                "purpose": "",
+                "metadata": ""
+            }
+        })
+        .to_string()
+        .into_bytes()
     }
 }
 
