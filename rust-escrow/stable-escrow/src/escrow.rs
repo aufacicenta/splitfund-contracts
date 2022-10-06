@@ -38,7 +38,7 @@ impl Escrow {
             env::panic_str("ERR_ALREADY_INITIALIZED");
         }
 
-        let name = format!("SA{}", id);
+        let name = format!("{}", id);
         let ft_metadata = FungibleTokenMetadata {
             spec: "ft-1.0.0".to_string(),
             name: name.clone(),
@@ -153,18 +153,20 @@ impl Escrow {
 
         // @TODO charge a fee here (1.5% initially?) when a property is sold by our contract
 
-        let dao_name = format!("sa{}", self.metadata.id);
+        let dao_name = format!("{}", self.metadata.id);
         let args =
             self.get_dao_config(dao_name.clone(), vec![self.metadata.maintainer.to_string()]);
 
         let promise = Promise::new(self.get_dao_factory_account_id()).function_call(
             "create".to_string(),
-            json!({"name": dao_name.clone(), "args": Base64VecU8(args) })
+            json!({ "name": dao_name.clone(), "args": Base64VecU8(args) })
                 .to_string()
                 .into_bytes(),
             BALANCE_FOR_CREATE_DAO,
             GAS_FOR_CREATE_DAO,
         );
+
+        // @TODO transfer the NEP141 stable coin funds to the DAO
 
         let callback = Promise::new(env::current_account_id()).function_call(
             "on_create_dao_callback".to_string(),
