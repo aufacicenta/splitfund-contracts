@@ -1,7 +1,7 @@
 use near_sdk::{
     collections::{LazyOption, UnorderedSet},
     env,
-    json_types::U128,
+    json_types::{U128, Base64VecU8},
     near_bindgen,
     serde_json::json,
     AccountId, Balance, Promise, PromiseOrValue,
@@ -29,19 +29,20 @@ impl Escrow {
         expires_at: u64,
         funding_amount_limit: U128,
         id: String,
-        nep_141_account_id: AccountId,
-        dao_factory_account_id: AccountId,
+        nep_141: AccountId,
+        dao_factory: AccountId,
+        maintainer: AccountId,
         metadata_url: String,
     ) -> Self {
         if env::state_exists() {
             env::panic_str("ERR_ALREADY_INITIALIZED");
         }
 
-        let id = format!("SA{}", id);
+        let name = format!("SA{}", id);
         let ft_metadata = FungibleTokenMetadata {
             spec: "ft-1.0.0".to_string(),
-            name: id.clone(),
-            symbol: id.clone(),
+            name: name.clone(),
+            symbol: name.clone(),
             icon: None,
             reference: None,
             reference_hash: None,
@@ -58,9 +59,11 @@ impl Escrow {
             metadata: Metadata {
                 expires_at,
                 funding_amount_limit: funding_amount_limit.0,
+                id,
                 unpaid_amount: funding_amount_limit.0,
-                nep_141_account_id,
-                dao_factory_account_id,
+                nep_141,
+                dao_factory,
+                maintainer,
                 metadata_url,
             },
         }
@@ -108,7 +111,7 @@ impl Escrow {
         let balance = self.ft.internal_unwrap_balance_of(&payee);
 
         // Transfer from collateral token to payee
-        let promise = Promise::new(self.metadata.nep_141_account_id.clone()).function_call(
+        let promise = Promise::new(self.metadata.nep_141.clone()).function_call(
             "ft_transfer".to_string(),
             json!({
                 "amount": balance.to_string(),
@@ -135,13 +138,19 @@ impl Escrow {
         promise.then(callback)
     }
 
-    /*
+    fn get_dao_config(&self, name: String, accounts: Vec<String>) -> Vec<u8> {
+        json!({ "policy": { "roles": [ { "name": "Council", "kind": { "Group": accounts }, "permissions": [ "*:*" ], "vote_policy": {} }, { "name": "all", "kind": "Everyone", "permissions": [ "*:AddProposal" ], "vote_policy": {} } ], "default_vote_policy": { "weight_kind": "RoleWeight", "quorum": "0", "threshold": [ 1, 2 ] }, "proposal_bond": "100000000000000000000000", "proposal_period": "604800000000000", "bounty_bond": "100000000000000000000000", "bounty_forgiveness_period": "604800000000000" }, "config": { "name": name, "purpose": "", "metadata": "" } })
+            .to_string()
+            .into_bytes()
+    }
+
     /**
      * Only if total funds are reached, allow to call this function
      * Transfer total NEP141 funds to a new DAO
      * Make the depositors members of the DAO
      */
-    pub fn delegate_funds(&mut self, dao_name: String) -> Promise {
+    #[payable]
+    pub fn delegate_funds(&mut self) -> Promise {
         if self.is_deposit_allowed() || self.is_withdrawal_allowed() {
             env::panic_str("ERR_DELEGATE_NOT_ALLOWED");
         }
@@ -150,28 +159,29 @@ impl Escrow {
 
         // @TODO charge a fee here (1.5% initially?) when a property is sold by our contract
 
-        let dao_promise = Promise::new(self.metadata.dao_factory_account_id.clone()).function_call(
-            "create_dao".to_string(),
-            json!({"dao_name": dao_name.clone(), "deposits": self.get_deposit_accounts() })
+        let dao_name = format!("sa{}", self.metadata.id);
+        let args = self.get_dao_config(dao_name.clone(), vec![ self.metadata.maintainer.to_string() ]);
+
+        let promise = Promise::new(self.metadata.dao_factory.clone()).function_call(
+            "create".to_string(),
+            json!({"name": dao_name.clone(), "args": Base64VecU8(args) })
                 .to_string()
                 .into_bytes(),
-            // @TODO check deposit value to create_dao
-            FT_ATTACHED_DEPOSIT,
+            BALANCE_FOR_CREATE_DAO,
             GAS_FOR_CREATE_DAO,
         );
 
         let callback = Promise::new(env::current_account_id()).function_call(
-            "on_delegate_callback".to_string(),
-            json!({"dao_name": dao_name.clone()})
+            "on_create_dao_callback".to_string(),
+            json!({})
                 .to_string()
                 .into_bytes(),
             0,
-            GAS_FOR_CALLBACK,
+            GAS_FOR_CREATE_DAO_CB,
         );
 
-        dao_promise.then(callback)
+        promise.then(callback)
     }
-    */
 }
 
 near_contract_standards::impl_fungible_token_core!(Escrow, ft);
