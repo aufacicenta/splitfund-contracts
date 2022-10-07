@@ -33,6 +33,7 @@ impl Escrow {
         dao_factory: AccountId,
         maintainer: AccountId,
         metadata_url: String,
+        staking_factory: AccountId,
     ) -> Self {
         if env::state_exists() {
             env::panic_str("ERR_ALREADY_INITIALIZED");
@@ -65,6 +66,7 @@ impl Escrow {
                 dao_factory,
                 maintainer,
                 metadata_url,
+                staking_factory,
             },
         }
     }
@@ -175,7 +177,21 @@ impl Escrow {
             GAS_FOR_CREATE_DAO_CB,
         );
 
-        promise.then(callback)
+        let create_staking = Promise::new(self.metadata.staking_factory.clone()).function_call(
+            "create_stake".to_string(),
+            json!({
+                "name": dao_name.clone(),
+                "dao_account_id": format!("{}.{}", dao_name, self.metadata.dao_factory),
+                "token_account_id": self.metadata.nep_141,
+                "unstake_period": "604800000000000",
+            })
+            .to_string()
+            .into_bytes(),
+            BALANCE_FOR_CREATE_STAKE,
+            GAS_FOR_CREATE_STAKE,
+        );
+
+        promise.then(callback).then(create_staking)
     }
 }
 

@@ -14,3 +14,7 @@ pub const GAS_FT_WITHDRAW_CALLBACK: Gas = Gas(2_000_000_000_000);
 pub const BALANCE_FOR_CREATE_DAO: Balance = 6_000_000_000_000_000_000_000_000; // 6 Near
 pub const GAS_FOR_CREATE_DAO: Gas = Gas(150_000_000_000_000); //@TODO validate the correct gas amount
 pub const GAS_FOR_CREATE_DAO_CB: Gas = Gas(5_000_000_000_000);
+
+// Staking
+pub const BALANCE_FOR_CREATE_STAKE: Balance = 3_000_000_000_000_000_000_000_000; // 3 Near
+pub const GAS_FOR_CREATE_STAKE: Gas = Gas(40_000_000_000_000);

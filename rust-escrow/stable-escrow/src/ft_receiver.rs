@@ -10,7 +10,7 @@ impl FungibleTokenReceiver for Escrow {
         &mut self,
         sender_id: AccountId,
         amount: U128,
-        _msg: String,
+        msg: String,
     ) -> PromiseOrValue<U128> {
         if !env::state_exists() {
             env::panic_str("ERR_NOT_INITIALIZED");

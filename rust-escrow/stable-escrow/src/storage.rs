@@ -27,4 +27,5 @@ pub struct Metadata {
     pub dao_factory: AccountId,
     pub maintainer: AccountId,
     pub metadata_url: String,
+    pub staking_factory: AccountId,
 }
