@@ -30,7 +30,6 @@ impl Escrow {
     pub fn on_create_dao_callback(&mut self) -> bool {
         match env::promise_result(0) {
             PromiseResult::Successful(_result) => {
-                // @TODO log
                 self.metadata.dao_created = true;
                 true
             }
@@ -42,7 +41,6 @@ impl Escrow {
     pub fn on_create_stake_callback(&mut self) -> bool {
         match env::promise_result(0) {
             PromiseResult::Successful(_result) => {
-                // @TODO log
                 self.metadata.stake_created = true;
                 true
             }
@@ -54,7 +52,7 @@ impl Escrow {
     pub fn on_create_proposals_callback(&mut self) -> bool {
         match env::promise_result(0) {
             PromiseResult::Successful(_result) => {
-                // @TODO log
+                self.metadata.dao_setuped = true;
                 true
             }
             _ => env::panic_str("ERR_DAO_SETUP_UNSUCCESSFUL"),
