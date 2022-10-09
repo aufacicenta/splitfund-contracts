@@ -67,6 +67,7 @@ impl Escrow {
                 metadata_url,
                 staking_factory,
                 dao_created: false,
+                dao_setuped: false,
                 stake_created: false,
             },
         }
@@ -162,7 +163,7 @@ impl Escrow {
     #[payable]
     pub fn create_dao(&mut self) -> Promise {
         if self.is_deposit_allowed() || self.is_withdrawal_allowed() {
-            env::panic_str("ERR_DELEGATE_NOT_ALLOWED");
+            env::panic_str("ERR_CREATE_DAO_NOT_ALLOWED");
         }
 
         if self.is_dao_created() {
@@ -195,10 +196,6 @@ impl Escrow {
 
     #[payable]
     pub fn create_stake(&mut self) -> Promise {
-        if self.is_deposit_allowed() || self.is_withdrawal_allowed() {
-            env::panic_str("ERR_DELEGATE_NOT_ALLOWED");
-        }
-
         if !self.is_dao_created() {
             env::panic_str("ERR_DAO_IS_NOT_CREATED");
         }
@@ -233,12 +230,12 @@ impl Escrow {
 
     #[payable]
     pub fn setup_dao(&mut self) -> Promise {
-        if self.is_deposit_allowed() || self.is_withdrawal_allowed() {
-            env::panic_str("ERR_DELEGATE_NOT_ALLOWED");
-        }
-
         if !self.is_stake_created() {
             env::panic_str("ERR_STAKE_IS_NOT_CREATED");
+        }
+
+        if self.is_dao_setuped() {
+            env::panic_str("ERR_DAO_ALREADY_SETUPED");
         }
 
         let dao_account: AccountId = format!("{}.{}", self.metadata.id, self.metadata.dao_factory)
@@ -301,7 +298,7 @@ impl Escrow {
             GAS_CREATE_DAO_PROPOSAL,
         );
 
-        // Approve Staking Proposal
+        // Approve Policy Proposal
         promise = promise.function_call(
             "act_proposal".to_string(),
             json!({

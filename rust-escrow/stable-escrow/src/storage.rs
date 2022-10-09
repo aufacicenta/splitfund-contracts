@@ -29,5 +29,6 @@ pub struct Metadata {
     pub metadata_url: String,
     pub staking_factory: AccountId,
     pub dao_created: bool,
+    pub dao_setuped: bool,
     pub stake_created: bool,
 }

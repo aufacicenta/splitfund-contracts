@@ -58,6 +58,10 @@ impl Escrow {
         self.metadata.dao_created
     }
 
+    pub fn is_dao_setuped(&self) -> bool {
+        self.metadata.dao_setuped
+    }
+
     pub fn is_stake_created(&self) -> bool {
         self.metadata.stake_created
     }
