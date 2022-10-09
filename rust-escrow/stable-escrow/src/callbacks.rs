@@ -1,26 +1,26 @@
-use near_sdk::{env, near_bindgen, AccountId, Balance, PromiseResult};
+use near_sdk::{env, log, near_bindgen, AccountId, Balance, PromiseResult};
 
 use crate::storage::*;
 
 #[near_bindgen]
 impl Escrow {
     #[private]
-    pub fn on_withdraw_callback(&mut self, payee: AccountId, balance: String) -> Balance {
+    pub fn on_withdraw_callback(&mut self, receiver_id: AccountId, amount: String) -> Balance {
         match env::promise_result(0) {
             PromiseResult::Successful(_result) => {
-                let balance: Balance = balance.parse::<Balance>().unwrap();
+                let amount: Balance = amount.parse::<Balance>().unwrap();
 
-                self.ft.internal_withdraw(&payee, balance);
-                self.deposits.remove(&payee);
+                self.ft.internal_withdraw(&receiver_id, amount);
+                self.deposits.remove(&receiver_id);
                 self.metadata.unpaid_amount = self
                     .metadata
                     .unpaid_amount
-                    .checked_add(balance)
+                    .checked_add(amount)
                     .unwrap_or_else(|| env::panic_str("ERR_UNPAID_AMOUNT_OVERFLOW"));
 
-                // @TODO log
+                log!("Successful Withdrawal. Account: {}, Amount: {}", receiver_id, amount);
 
-                balance
+                amount
             }
             _ => env::panic_str("ERR_WITHDRAW_UNSUCCESSFUL"),
         }

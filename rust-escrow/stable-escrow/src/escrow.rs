@@ -1,6 +1,6 @@
 use near_sdk::{
     collections::{LazyOption, UnorderedSet},
-    env,
+    env, log,
     json_types::{Base64VecU8, U128},
     near_bindgen,
     serde_json::{json, Value},
@@ -74,12 +74,10 @@ impl Escrow {
     }
 
     /**
+     * Only if total funds are reached or escrow has not expired
      * Called on ft_transfer_callback only
-     * Contract NEP141 balance is kept in the NEP141 contract
-     * Sender balances are kept in the balances map
      * Total sender balances must match the contract NEP141 balance, minus fees
-     *
-     * Transfer self NEP141 in exchange of the stable NEP141 amount as a receipt
+     * Transfer self NEP141 of the stable NEP141 amount as a receipt
      */
     #[private]
     pub fn deposit(&mut self, sender_id: AccountId, amount: Balance) {
@@ -99,11 +97,12 @@ impl Escrow {
             .checked_sub(amount)
             .unwrap_or_else(|| env::panic_str("ERR_UNPAID_AMOUNT_OVERFLOW"));
 
-        // @TODO log
+        log!("Successful Deposit. Account: {}, Amount: {}", sender_id, amount);
     }
 
     /**
-     * Transfer funds from contract NEP141 balance to sender_id
+     * Only if total funds are not reached or escrow has expired
+     * Transfer all funds to receiver_id
      */
     #[payable]
     pub fn withdraw(&mut self) -> Promise {
@@ -111,15 +110,14 @@ impl Escrow {
             env::panic_str("ERR_WITHDRAWAL_NOT_ALLOWED");
         }
 
-        let payee = env::signer_account_id();
-        let balance = self.ft.internal_unwrap_balance_of(&payee);
+        let receiver_id = env::signer_account_id();
+        let amount = self.ft.internal_unwrap_balance_of(&receiver_id);
 
-        // Transfer from collateral token to payee
         let promise = Promise::new(self.metadata.nep_141.clone()).function_call(
             "ft_transfer".to_string(),
             json!({
-                "amount": balance.to_string(),
-                "receiver_id": payee.to_string(),
+                "amount": amount.to_string(),
+                "receiver_id": receiver_id.to_string(),
             })
             .to_string()
             .into_bytes(),
@@ -130,13 +128,13 @@ impl Escrow {
         let callback = Promise::new(env::current_account_id()).function_call(
             "on_withdraw_callback".to_string(),
             json!({
-                "payee": payee.to_string(),
-                "balance": balance.to_string(),
+                "receiver_id": receiver_id.to_string(),
+                "amount": amount.to_string(),
             })
             .to_string()
             .into_bytes(),
             0,
-            GAS_FT_WITHDRAW_CALLBACK,
+            GAS_FT_TRANSFER_CB,
         );
 
         promise.then(callback)
@@ -160,6 +158,10 @@ impl Escrow {
         // @TODO transfer the NEP141 stable coin funds to the DAO
     }
 
+    /**
+     * Only if total funds are reached and if dao it not created
+     * Create a new sputnik dao with this contract account in the council
+     */
     #[payable]
     pub fn create_dao(&mut self) -> Promise {
         if self.is_deposit_allowed() || self.is_withdrawal_allowed() {
@@ -194,6 +196,10 @@ impl Escrow {
         promise.then(callback)
     }
 
+    /**
+     * Only if dao it created and if stake it not created
+     * Create a new stacking contract
+     */
     #[payable]
     pub fn create_stake(&mut self) -> Promise {
         if !self.is_dao_created() {
@@ -228,6 +234,11 @@ impl Escrow {
         promise.then(callback)
     }
 
+    /**
+     * Only if staking it created and if the dao it not setuped
+     * Setup the staking contract
+     * Setup a new policy with board and investor accounts
+     */
     #[payable]
     pub fn setup_dao(&mut self) -> Promise {
         if !self.is_stake_created() {

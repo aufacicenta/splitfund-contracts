@@ -74,12 +74,7 @@ DAO_ACCOUNT_ID=sa14.sputnikv2.testnet
 
 near call $DAO_ACCOUNT_ID add_proposal '{"proposal": { "description": "", "kind": { "SetStakingContract": { "staking_id": "'$STAKING_ACCOUNT_ID'" } } } }' --accountId $ID --amount 0.1
 near call $DAO_ACCOUNT_ID act_proposal '{"id": 0, "action" :"VoteApprove"}' --accountId $ID  --gas $MAX_GAS
-near view $DAO_ACCOUNT_ID get_staking_contract
 
 near view $DAO_ACCOUNT_ID get_staking_contract
+near view $DAO_ACCOUNT_ID get_policy
 
-#####
-# Create Stake
-#####
-
-near call sf1.$ID create_stake '{"name": "sa6", "dao_account_id": "sa6.sputnikv2.testnet", "token_account_id": "'$ID'", "unstake_period": "604800000000000"}' --accountId $ID --amount 3 --gas $MAX_GAS
