@@ -65,4 +65,12 @@ impl Escrow {
     pub fn is_stake_created(&self) -> bool {
         self.metadata.stake_created
     }
+
+    pub fn get_fee_percentage(&self) -> f32 {
+        self.metadata.fee_percentage
+    }
+
+    pub fn get_fee_balance(&self) -> Balance {
+        self.metadata.fee_balance
+    }
 }

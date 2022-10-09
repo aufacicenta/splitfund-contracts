@@ -3,7 +3,7 @@ use near_sdk::{
     collections::{LazyOption, UnorderedSet},
     near_bindgen,
     serde::{Deserialize, Serialize},
-    AccountId,
+    AccountId, Balance,
 };
 
 use near_contract_standards::fungible_token::{metadata::FungibleTokenMetadata, FungibleToken};
@@ -31,4 +31,6 @@ pub struct Metadata {
     pub dao_created: bool,
     pub dao_setuped: bool,
     pub stake_created: bool,
+    pub fee_percentage: f32,
+    pub fee_balance: Balance,
 }

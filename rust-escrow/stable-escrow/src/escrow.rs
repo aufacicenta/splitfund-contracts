@@ -34,6 +34,7 @@ impl Escrow {
         maintainer: AccountId,
         metadata_url: String,
         staking_factory: AccountId,
+        fee_percentage: f32
     ) -> Self {
         if env::state_exists() {
             env::panic_str("ERR_ALREADY_INITIALIZED");
@@ -51,9 +52,13 @@ impl Escrow {
 
         let mut token = FungibleToken::new(b"t".to_vec());
         token.total_supply = funding_amount_limit.0;
+        token.internal_register_account(&maintainer);
+
+        let mut deposits = UnorderedSet::new(b"d".to_vec());
+        deposits.insert(&maintainer);
 
         Self {
-            deposits: UnorderedSet::new(b"d".to_vec()),
+            deposits,
             ft: token,
             ft_metadata: LazyOption::new(b"m".to_vec(), Some(&ft_metadata)),
             metadata: Metadata {
@@ -69,6 +74,8 @@ impl Escrow {
                 dao_created: false,
                 dao_setuped: false,
                 stake_created: false,
+                fee_percentage,
+                fee_balance: 0,
             },
         }
     }
@@ -89,7 +96,16 @@ impl Escrow {
             env::panic_str("ERR_DEPOSIT_NOT_ALLOWED");
         }
 
-        self.ft.internal_deposit(&sender_id, amount);
+        // Fee Calculations
+        let fee_amount = (amount as f32 * self.metadata.fee_percentage) as Balance;
+        self.metadata.fee_balance = self.metadata.fee_balance
+            .checked_add(fee_amount)
+            .unwrap_or_else(|| env::panic_str("ERR_FEE_BALANCE_OVERFLOW"));
+        let amount_fee = amount.checked_sub(fee_amount)
+            .unwrap_or_else(|| env::panic_str("ERR_AMOUNT_OVERFLOW"));
+
+        // Register transfer
+        self.ft.internal_deposit(&sender_id, amount_fee);
         self.deposits.insert(&sender_id);
         self.metadata.unpaid_amount = self
             .metadata
@@ -97,7 +113,7 @@ impl Escrow {
             .checked_sub(amount)
             .unwrap_or_else(|| env::panic_str("ERR_UNPAID_AMOUNT_OVERFLOW"));
 
-        log!("Successful Deposit. Account: {}, Amount: {}", sender_id, amount);
+        log!("Successful Deposit. Account: {}, Amount: {}, Fee: {}", sender_id, amount_fee, fee_amount);
     }
 
     /**
@@ -129,6 +145,58 @@ impl Escrow {
             "on_withdraw_callback".to_string(),
             json!({
                 "receiver_id": receiver_id.to_string(),
+                "amount": amount.to_string(),
+            })
+            .to_string()
+            .into_bytes(),
+            0,
+            GAS_FT_TRANSFER_CB,
+        );
+
+        promise.then(callback)
+    }
+
+    #[payable]
+    pub fn claim_fees(&mut self) -> Promise {
+        if !self.is_withdrawal_allowed() {
+            if self.is_deposit_allowed() || self.is_withdrawal_allowed() {
+                env::panic_str("ERR_CLAIM_FEES_NOT_ALLOWED");
+            }
+        }
+
+        if self.metadata.fee_balance == 0 {
+            env::panic_str("ERR_FEES_ALREADY_CLAIMED");
+        }
+
+        let mut amount = self.metadata.fee_balance;
+
+        if !self.is_deposit_allowed() && !self.is_withdrawal_allowed() {
+            // If the escrow is successful
+            // Half of the fees are collected and half invested in the asset
+            amount = (self.metadata.fee_balance as f32 * 0.5) as Balance;
+        }
+
+        let receiver_id = self.metadata.maintainer.clone();
+
+        let promise = Promise::new(self.metadata.nep_141.clone()).function_call(
+            "ft_transfer".to_string(),
+            json!({
+                "amount": amount.to_string(),
+                "receiver_id": receiver_id.to_string(),
+            })
+            .to_string()
+            .into_bytes(),
+            1, // 1 yoctoNEAR
+            GAS_FT_TRANSFER,
+        );
+
+        amount = self.metadata.fee_balance
+            .checked_sub(amount)
+            .unwrap_or_else(|| env::panic_str("ERR_FEE_BALANCE_OVERFLOW"));
+
+        let callback = Promise::new(env::current_account_id()).function_call(
+            "on_claim_fees_callback".to_string(),
+            json!({
                 "amount": amount.to_string(),
             })
             .to_string()

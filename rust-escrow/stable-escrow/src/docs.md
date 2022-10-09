@@ -30,7 +30,7 @@ near delete es1.$ID $ID
 near create-account es1.$ID --masterAccount $ID --initialBalance 5
 near deploy --wasmFile ../src/stable_escrow.wasm --accountId es1.$ID
 # Vence en diciembre, funding 10,0000
-near call es1.$ID new '{"decimals": 2, "expires_at": 1670215945000000000, "funding_amount_limit": "10000", "id": "sa18", "nep_141": "'$ID'", "dao_factory": "sputnikv2.testnet", "maintainer": "'$ID'", "metadata_url": "", "staking_factory": "sf1.'$ID'"}' --accountId $ID
+near call es1.$ID new '{"decimals": 2, "expires_at": 1670215945000000000, "funding_amount_limit": "10000", "id": "sa18", "nep_141": "'$ID'", "dao_factory": "sputnikv2.testnet", "maintainer": "'$ID'", "metadata_url": "", "staking_factory": "sf1.'$ID'", "fee_percentage": 0.02}' --accountId $ID
 
 near view es1.$ID ft_balance_of '{"account_id": "'bob.$ID'"}'
 near view es1.$ID ft_total_supply
@@ -39,6 +39,9 @@ near view es1.$ID ft_metadata
 # Depositar
 near call $ID storage_deposit '' --accountId es1.$ID --amount 0.00125
 near view $ID ft_balance_of '{"account_id": "'es1.$ID'"}'
+
+near view es1.$ID get_fee_balance
+near view es1.$ID get_fee_percentage
 
 near call es1.$ID storage_deposit '' --accountId bob.$ID --amount 0.00125
 near call $ID ft_transfer_call '{"receiver_id": "'es1.$ID'", "amount": "10000", "msg": ""}' --accountId bob.$ID --amount 0.000000000000000000000001 --gas 50000000000000
@@ -51,6 +54,15 @@ near view es1.$ID get_deposit_accounts
 near view es1.$ID is_deposit_allowed
 near view es1.$ID is_withdrawal_allowed
 near call es1.$ID withdraw --accountId bob.$ID --amount 0.000000000000000000000001
+
+# Claim fees
+near call es1.$ID claim_fees --accountId bob.$ID --amount 0.000000000000000000000001
+near view es1.$ID get_fee_balance
+
+near view es1.$ID ft_balance_of '{"account_id": "'$ID'"}'
+near view es1.$ID ft_balance_of '{"account_id": "'es1.$ID'"}'
+near view es1.$ID ft_balance_of '{"account_id": "'bob.$ID'"}'
+
 
 #####
 # Create DAO and Stake

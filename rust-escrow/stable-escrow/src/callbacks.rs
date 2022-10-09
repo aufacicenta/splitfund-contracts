@@ -27,6 +27,31 @@ impl Escrow {
     }
 
     #[private]
+    pub fn on_claim_fees_callback(&mut self, amount: String) -> bool {
+        match env::promise_result(0) {
+            PromiseResult::Successful(_result) => {
+                let amount: Balance = amount.parse::<Balance>().unwrap();
+
+                if amount > 0 {
+                    self.ft.internal_deposit(&self.metadata.maintainer.clone(), amount);
+                }
+                
+                log!("Successful Claim Fees. Maintainer: {}, Claim: {}, DAO Investment {}",
+                    self.metadata.maintainer,
+                    self.metadata.fee_balance - amount,
+                    amount,
+                );
+
+                //@TODO Burn unassigned tokens (fees)
+
+                self.metadata.fee_balance = 0;
+                true
+            }
+            _ => env::panic_str("ERR_CLAIM_FEES_UNSUCCESSFUL"),
+        }
+    }
+
+    #[private]
     pub fn on_create_dao_callback(&mut self) -> bool {
         match env::promise_result(0) {
             PromiseResult::Successful(_result) => {
