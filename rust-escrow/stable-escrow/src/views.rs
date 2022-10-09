@@ -47,4 +47,12 @@ impl Escrow {
     pub fn get_deposit_accounts(&self) -> Vec<AccountId> {
         self.deposits.to_vec()
     }
+
+    pub fn is_dao_created(&self) -> bool {
+        self.metadata.dao_created
+    }
+
+    pub fn is_stake_created(&self) -> bool {
+        self.metadata.stake_created
+    }
 }

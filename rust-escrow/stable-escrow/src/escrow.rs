@@ -67,6 +67,8 @@ impl Escrow {
                 maintainer,
                 metadata_url,
                 staking_factory,
+                dao_created: false,
+                stake_created: false,
             },
         }
     }
@@ -146,7 +148,7 @@ impl Escrow {
      * Make the depositors members of the DAO
      */
     #[payable]
-    pub fn delegate_funds(&mut self) -> Promise {
+    pub fn _delegate_funds(&mut self) {
         if self.is_deposit_allowed() || self.is_withdrawal_allowed() {
             env::panic_str("ERR_DELEGATE_NOT_ALLOWED");
         }
@@ -155,20 +157,29 @@ impl Escrow {
 
         // @TODO charge a fee here (1.5% initially?) when a property is sold by our contract
 
-        let dao_name = format!("{}", self.metadata.id);
+        // @TODO transfer the NEP141 stable coin funds to the DAO
+    }
+
+    pub fn create_dao(&mut self) -> Promise {
+        if self.is_deposit_allowed() || self.is_withdrawal_allowed() {
+            env::panic_str("ERR_DELEGATE_NOT_ALLOWED");
+        }
+
+        if self.is_dao_created() {
+            env::panic_str("ERR_DAO_ALREADY_CREATED");
+        }
+
         let args =
-            self.get_dao_config(dao_name.clone(), vec![self.metadata.maintainer.to_string()]);
+            self.get_dao_config(self.metadata.id.clone(), vec![self.metadata.maintainer.to_string()]);
 
         let promise = Promise::new(self.get_dao_factory_account_id()).function_call(
             "create".to_string(),
-            json!({ "name": dao_name.clone(), "args": Base64VecU8(args) })
+            json!({ "name": self.metadata.id, "args": Base64VecU8(args) })
                 .to_string()
                 .into_bytes(),
             BALANCE_FOR_CREATE_DAO,
             GAS_FOR_CREATE_DAO,
         );
-
-        // @TODO transfer the NEP141 stable coin funds to the DAO
 
         let callback = Promise::new(env::current_account_id()).function_call(
             "on_create_dao_callback".to_string(),
@@ -177,11 +188,27 @@ impl Escrow {
             GAS_FOR_CREATE_DAO_CB,
         );
 
-        let create_staking = Promise::new(self.metadata.staking_factory.clone()).function_call(
+        promise.then(callback)
+    }
+
+    pub fn create_stake(&mut self) -> Promise {
+        if self.is_deposit_allowed() || self.is_withdrawal_allowed() {
+            env::panic_str("ERR_DELEGATE_NOT_ALLOWED");
+        }
+
+        if !self.is_dao_created() {
+            env::panic_str("ERR_DAO_IS_NOT_CREATED");
+        }
+
+        if self.is_stake_created() {
+            env::panic_str("ERR_STAKE_ALREADY_CREATED");
+        }
+
+        let promise = Promise::new(self.metadata.staking_factory.clone()).function_call(
             "create_stake".to_string(),
             json!({
-                "name": dao_name.clone(),
-                "dao_account_id": format!("{}.{}", dao_name, self.metadata.dao_factory),
+                "name": self.metadata.id,
+                "dao_account_id": format!("{}.{}", self.metadata.id, self.metadata.dao_factory),
                 "token_account_id": self.metadata.nep_141,
                 "unstake_period": "604800000000000",
             })
@@ -191,7 +218,14 @@ impl Escrow {
             GAS_FOR_CREATE_STAKE,
         );
 
-        promise.then(callback).then(create_staking)
+        let callback = Promise::new(env::current_account_id()).function_call(
+            "on_create_stake_callback".to_string(),
+            json!({}).to_string().into_bytes(),
+            0,
+            GAS_FOR_CREATE_STAKE_CB,
+        );
+
+        promise.then(callback)
     }
 }
 

@@ -18,3 +18,4 @@ pub const GAS_FOR_CREATE_DAO_CB: Gas = Gas(5_000_000_000_000);
 // Staking
 pub const BALANCE_FOR_CREATE_STAKE: Balance = 3_000_000_000_000_000_000_000_000; // 3 Near
 pub const GAS_FOR_CREATE_STAKE: Gas = Gas(40_000_000_000_000);
+pub const GAS_FOR_CREATE_STAKE_CB: Gas = Gas(5_000_000_000_000);

@@ -31,10 +31,22 @@ impl Escrow {
         match env::promise_result(0) {
             PromiseResult::Successful(_result) => {
                 // @TODO log
-
+                self.metadata.dao_created = true;
                 true
             }
             _ => env::panic_str("ERR_CREATE_DAO_UNSUCCESSFUL"),
+        }
+    }
+
+    #[private]
+    pub fn on_create_stake_callback(&mut self) -> bool {
+        match env::promise_result(0) {
+            PromiseResult::Successful(_result) => {
+                // @TODO log
+                self.metadata.stake_created = true;
+                true
+            }
+            _ => env::panic_str("ERR_CREATE_STAKE_UNSUCCESSFUL"),
         }
     }
 }
