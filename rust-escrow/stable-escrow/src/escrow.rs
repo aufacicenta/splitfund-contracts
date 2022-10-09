@@ -3,7 +3,7 @@ use near_sdk::{
     env,
     json_types::{Base64VecU8, U128},
     near_bindgen,
-    serde_json::json,
+    serde_json::{json, Value},
     AccountId, Balance, Promise, PromiseOrValue,
 };
 
@@ -170,11 +170,8 @@ impl Escrow {
         }
 
         let args = self.get_dao_config(self.metadata.id.clone(),
-            vec![
-                self.metadata.maintainer.to_string(),
-                env::current_account_id().to_string(),
-            ],
-            self.get_deposit_accounts()
+            vec![env::current_account_id().to_string()],
+            vec![env::current_account_id().to_string()],
         );
 
         let promise = Promise::new(self.get_dao_factory_account_id()).function_call(
@@ -233,48 +230,145 @@ impl Escrow {
 
         promise.then(callback)
     }
+
+    #[payable]
+    pub fn setup_dao(&mut self) -> Promise {
+        if self.is_deposit_allowed() || self.is_withdrawal_allowed() {
+            env::panic_str("ERR_DELEGATE_NOT_ALLOWED");
+        }
+
+        if !self.is_stake_created() {
+            env::panic_str("ERR_STAKE_IS_NOT_CREATED");
+        }
+
+        let dao_account: AccountId = format!("{}.{}", self.metadata.id, self.metadata.dao_factory)
+            .parse()
+            .unwrap();
+        let stake_account = format!("{}.{}", self.metadata.id, self.metadata.staking_factory);
+        let mut promise: Promise = Promise::new(dao_account.clone());
+
+        // Create Staking Proposal
+        promise = promise.function_call(
+            "add_proposal".to_string(),
+            json!({
+                "proposal": {
+                    "description": "",
+                    "kind": {
+                        "SetStakingContract": {
+                            "staking_id": stake_account
+                        }
+                    }
+                }
+            })
+            .to_string()
+            .into_bytes(),
+            BALANCE_PROPOSAL_BOND,
+            GAS_CREATE_DAO_PROPOSAL,
+        );
+
+        // Approve Staking Proposal
+        promise = promise.function_call(
+            "act_proposal".to_string(),
+            json!({
+                "id": 0,
+                "action": "VoteApprove"
+            })
+            .to_string()
+            .into_bytes(),
+            0,
+            GAS_CREATE_DAO_PROPOSAL,
+        );
+
+        // Create Policy Proposal
+        promise = promise.function_call(
+            "add_proposal".to_string(),
+            json!({
+                "proposal": {
+                    "description": "",
+                    "kind": {
+                        "ChangePolicy": {
+                            "policy": self.get_policy(vec![
+                                self.metadata.maintainer.to_string()],
+                                self.get_deposit_accounts(),
+                            )
+                        }
+                    }
+                }
+            })
+            .to_string()
+            .into_bytes(),
+            BALANCE_PROPOSAL_BOND,
+            GAS_CREATE_DAO_PROPOSAL,
+        );
+
+        // Approve Staking Proposal
+        promise = promise.function_call(
+            "act_proposal".to_string(),
+            json!({
+                "id": 1,
+                "action": "VoteApprove"
+            })
+            .to_string()
+            .into_bytes(),
+            0,
+            GAS_CREATE_DAO_PROPOSAL,
+        );
+
+        let callback = Promise::new(env::current_account_id()).function_call(
+            "on_create_proposals_callback".to_string(),
+            json!({}).to_string().into_bytes(),
+            0,
+            GAS_CREATE_DAO_PROPOSAL_CB,
+        );
+
+        promise.then(callback)
+    }
 }
 
 impl Escrow {
+    fn get_policy(&self, council: Vec<String>, investors: Vec<String>) -> Value {
+        json!({
+            "roles": [
+                {
+                    "name": "council",
+                    "kind": { "Group": council },
+                    "permissions": [ "*:*" ],
+                    "vote_policy": {}
+                },
+                {
+                    "name": "investors",
+                    "kind": { "Group": investors },
+                    "permissions": [ "*:*" ], //@TODO Which permissions will the investors have in the DAO ?
+                    "vote_policy": {
+                        "*": {
+                            "weight_kind": "TokenWeight",
+                            "quorum": "0",
+                            "threshold": [ 1, 2 ]
+                        }
+                    }
+                },
+                {
+                    "name": "all",
+                    "kind": "Everyone",
+                    "permissions": [ "*:AddProposal" ],
+                    "vote_policy": {}
+                }
+            ],
+            "default_vote_policy": {
+                "weight_kind": "RoleWeight",
+                "quorum": "0",
+                "threshold": [ 1, 2 ]
+            },
+            "proposal_bond": "100000000000000000000000",
+            "proposal_period": PROPOSAL_PERIOD.to_string(),
+            "bounty_bond": "100000000000000000000000",
+            "bounty_forgiveness_period": PROPOSAL_PERIOD.to_string()
+        })
+    }
+
     fn get_dao_config(&self, name: String, council: Vec<String>, investors: Vec<String>) -> Vec<u8> {
         json!({
-            "policy": {
-                "roles": [
-                    {
-                        "name": "council",
-                        "kind": { "Group": council },
-                        "permissions": [ "*:*" ],
-                        "vote_policy": {}
-                    },
-                    {
-                        "name": "investors",
-                        "kind": { "Group": investors },
-                        "permissions": [ "*:*" ], //@TODO Which permissions will the investors have in the DAO ?
-                        "vote_policy": {
-                            "*": {
-                                "weight_kind": "TokenWeight",
-                                "quorum": "0",
-                                "threshold": [ 1, 2 ]
-                            }
-                        }
-                    },
-                    {
-                        "name": "all",
-                        "kind": "Everyone",
-                        "permissions": [ "*:AddProposal" ],
-                        "vote_policy": {}
-                    }
-                ],
-                "default_vote_policy": {
-                    "weight_kind": "RoleWeight",
-                    "quorum": "0",
-                    "threshold": [ 1, 2 ]
-                },
-                "proposal_bond": "100000000000000000000000",
-                "proposal_period": PROPOSAL_PERIOD.to_string(),
-                "bounty_bond": "100000000000000000000000",
-                "bounty_forgiveness_period": PROPOSAL_PERIOD.to_string()
-            },
+            "policy": self.get_policy(council, investors),
             "config": {
                 "name": name,
                 "purpose": "",

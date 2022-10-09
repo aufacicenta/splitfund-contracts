@@ -49,4 +49,15 @@ impl Escrow {
             _ => env::panic_str("ERR_CREATE_STAKE_UNSUCCESSFUL"),
         }
     }
+
+    #[private]
+    pub fn on_create_proposals_callback(&mut self) -> bool {
+        match env::promise_result(0) {
+            PromiseResult::Successful(_result) => {
+                // @TODO log
+                true
+            }
+            _ => env::panic_str("ERR_DAO_SETUP_UNSUCCESSFUL"),
+        }
+    }
 }

@@ -30,7 +30,7 @@ near delete es1.$ID $ID
 near create-account es1.$ID --masterAccount $ID --initialBalance 5
 near deploy --wasmFile ../src/stable_escrow.wasm --accountId es1.$ID
 # Vence en diciembre, funding 10,0000
-near call es1.$ID new '{"decimals": 2, "expires_at": 1670215945000000000, "funding_amount_limit": "10000", "id": "sa11", "nep_141": "'$ID'", "dao_factory": "sputnikv2.testnet", "maintainer": "'$ID'", "metadata_url": "", "staking_factory": "sf1.'$ID'"}' --accountId $ID
+near call es1.$ID new '{"decimals": 2, "expires_at": 1670215945000000000, "funding_amount_limit": "10000", "id": "sa18", "nep_141": "'$ID'", "dao_factory": "sputnikv2.testnet", "maintainer": "'$ID'", "metadata_url": "", "staking_factory": "sf1.'$ID'"}' --accountId $ID
 
 near view es1.$ID ft_balance_of '{"account_id": "'bob.$ID'"}'
 near view es1.$ID ft_total_supply
@@ -59,18 +59,24 @@ near call es1.$ID withdraw --accountId bob.$ID --amount 0.0000000000000000000000
 export MAX_GAS=300000000000000
 near call es1.$ID create_dao '' --accountId $ID --amount 6 --gas $MAX_GAS
 near call es1.$ID create_stake '' --accountId $ID --amount 3 --gas $MAX_GAS
+near call es1.$ID setup_dao '' --accountId $ID --amount 1 --gas $MAX_GAS
+
+DAO_ACCOUNT_ID=sa18.sputnikv2.testnet
+near view $DAO_ACCOUNT_ID get_staking_contract
+near view $DAO_ACCOUNT_ID get_policy
 
 #####
 # Setup dao
 #####
 
-STAKING_ACCOUNT_ID=s6.sf1.$ID
-DAO_ACCOUNT_ID=sa6.sputnikv2.testnet
+STAKING_ACCOUNT_ID=sa14.sf1.$ID
+DAO_ACCOUNT_ID=sa14.sputnikv2.testnet
 
 near call $DAO_ACCOUNT_ID add_proposal '{"proposal": { "description": "", "kind": { "SetStakingContract": { "staking_id": "'$STAKING_ACCOUNT_ID'" } } } }' --accountId $ID --amount 0.1
 near call $DAO_ACCOUNT_ID act_proposal '{"id": 0, "action" :"VoteApprove"}' --accountId $ID  --gas $MAX_GAS
 near view $DAO_ACCOUNT_ID get_staking_contract
 
+near view $DAO_ACCOUNT_ID get_staking_contract
 
 #####
 # Create Stake
