@@ -39,11 +39,10 @@ impl Escrow {
             env::panic_str("ERR_ALREADY_INITIALIZED");
         }
 
-        let name = format!("{}", id);
         let ft_metadata = FungibleTokenMetadata {
             spec: "ft-1.0.0".to_string(),
-            name: name.clone(),
-            symbol: name.clone(),
+            name: id.clone(),
+            symbol: id.clone(),
             icon: None,
             reference: None,
             reference_hash: None,
@@ -160,6 +159,7 @@ impl Escrow {
         // @TODO transfer the NEP141 stable coin funds to the DAO
     }
 
+    #[payable]
     pub fn create_dao(&mut self) -> Promise {
         if self.is_deposit_allowed() || self.is_withdrawal_allowed() {
             env::panic_str("ERR_DELEGATE_NOT_ALLOWED");
@@ -169,15 +169,20 @@ impl Escrow {
             env::panic_str("ERR_DAO_ALREADY_CREATED");
         }
 
-        let args =
-            self.get_dao_config(self.metadata.id.clone(), vec![self.metadata.maintainer.to_string()]);
+        let args = self.get_dao_config(self.metadata.id.clone(),
+            vec![
+                self.metadata.maintainer.to_string(),
+                env::current_account_id().to_string(),
+            ],
+            self.get_deposit_accounts()
+        );
 
         let promise = Promise::new(self.get_dao_factory_account_id()).function_call(
             "create".to_string(),
             json!({ "name": self.metadata.id, "args": Base64VecU8(args) })
                 .to_string()
                 .into_bytes(),
-            BALANCE_FOR_CREATE_DAO,
+            env::attached_deposit(),
             GAS_FOR_CREATE_DAO,
         );
 
@@ -191,6 +196,7 @@ impl Escrow {
         promise.then(callback)
     }
 
+    #[payable]
     pub fn create_stake(&mut self) -> Promise {
         if self.is_deposit_allowed() || self.is_withdrawal_allowed() {
             env::panic_str("ERR_DELEGATE_NOT_ALLOWED");
@@ -210,11 +216,11 @@ impl Escrow {
                 "name": self.metadata.id,
                 "dao_account_id": format!("{}.{}", self.metadata.id, self.metadata.dao_factory),
                 "token_account_id": self.metadata.nep_141,
-                "unstake_period": "604800000000000",
+                "unstake_period": PROPOSAL_PERIOD.to_string(),
             })
             .to_string()
             .into_bytes(),
-            BALANCE_FOR_CREATE_STAKE,
+            env::attached_deposit(),
             GAS_FOR_CREATE_STAKE,
         );
 
@@ -230,15 +236,27 @@ impl Escrow {
 }
 
 impl Escrow {
-    fn get_dao_config(&self, name: String, accounts: Vec<String>) -> Vec<u8> {
+    fn get_dao_config(&self, name: String, council: Vec<String>, investors: Vec<String>) -> Vec<u8> {
         json!({
             "policy": {
                 "roles": [
                     {
-                        "name": "Council",
-                        "kind": { "Group": accounts },
+                        "name": "council",
+                        "kind": { "Group": council },
                         "permissions": [ "*:*" ],
                         "vote_policy": {}
+                    },
+                    {
+                        "name": "investors",
+                        "kind": { "Group": investors },
+                        "permissions": [ "*:*" ], //@TODO Which permissions will the investors have in the DAO ?
+                        "vote_policy": {
+                            "*": {
+                                "weight_kind": "TokenWeight",
+                                "quorum": "0",
+                                "threshold": [ 1, 2 ]
+                            }
+                        }
                     },
                     {
                         "name": "all",
@@ -253,9 +271,9 @@ impl Escrow {
                     "threshold": [ 1, 2 ]
                 },
                 "proposal_bond": "100000000000000000000000",
-                "proposal_period": "604800000000000",
+                "proposal_period": PROPOSAL_PERIOD.to_string(),
                 "bounty_bond": "100000000000000000000000",
-                "bounty_forgiveness_period": "604800000000000"
+                "bounty_forgiveness_period": PROPOSAL_PERIOD.to_string()
             },
             "config": {
                 "name": name,

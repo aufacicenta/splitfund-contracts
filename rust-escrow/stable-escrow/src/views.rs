@@ -44,8 +44,14 @@ impl Escrow {
         self.get_total_funds() >= self.get_funding_amount_limit()
     }
 
-    pub fn get_deposit_accounts(&self) -> Vec<AccountId> {
-        self.deposits.to_vec()
+    pub fn get_deposit_accounts(&self) -> Vec<String> {
+        let mut accounts = vec![];
+
+        for i in self.deposits.to_vec() {
+            accounts.push(i.to_string());
+        }
+
+        accounts
     }
 
     pub fn is_dao_created(&self) -> bool {
