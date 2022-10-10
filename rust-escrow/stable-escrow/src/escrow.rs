@@ -1,8 +1,8 @@
 use near_sdk::{
     collections::{LazyOption, UnorderedSet},
-    env, log,
+    env,
     json_types::{Base64VecU8, U128},
-    near_bindgen,
+    log, near_bindgen,
     serde_json::{json, Value},
     AccountId, Balance, Promise, PromiseOrValue,
 };
@@ -25,16 +25,11 @@ impl Default for Escrow {
 impl Escrow {
     #[init]
     pub fn new(
-        decimals: u8,
-        expires_at: u64,
-        funding_amount_limit: U128,
-        id: String,
-        nep_141: AccountId,
-        dao_factory: AccountId,
-        maintainer: AccountId,
-        metadata_url: String,
-        staking_factory: AccountId,
-        fee_percentage: f32
+        metadata: Metadata,
+        fees: Fees,
+        dao: DAO,
+        staking: Staking,
+        fungible_token_metadata: FungibleTokenMetadata,
     ) -> Self {
         if env::state_exists() {
             env::panic_str("ERR_ALREADY_INITIALIZED");
@@ -42,40 +37,36 @@ impl Escrow {
 
         let ft_metadata = FungibleTokenMetadata {
             spec: "ft-1.0.0".to_string(),
-            name: id.clone(),
-            symbol: id.clone(),
             icon: None,
             reference: None,
             reference_hash: None,
-            decimals,
+            ..fungible_token_metadata
         };
 
-        let mut token = FungibleToken::new(b"t".to_vec());
-        token.total_supply = funding_amount_limit.0;
-        token.internal_register_account(&maintainer);
+        let mut ft = FungibleToken::new(b"t".to_vec());
+        ft.total_supply = metadata.funding_amount_limit;
+        ft.internal_register_account(&metadata.maintainer_account_id);
 
         let mut deposits = UnorderedSet::new(b"d".to_vec());
-        deposits.insert(&maintainer);
+        deposits.insert(&metadata.maintainer_account_id);
 
         Self {
             deposits,
-            ft: token,
+            ft,
             ft_metadata: LazyOption::new(b"m".to_vec(), Some(&ft_metadata)),
             metadata: Metadata {
-                expires_at,
-                funding_amount_limit: funding_amount_limit.0,
-                id,
-                unpaid_amount: funding_amount_limit.0,
-                nep_141,
-                dao_factory,
-                maintainer,
-                metadata_url,
-                staking_factory,
-                dao_created: false,
-                dao_setuped: false,
-                stake_created: false,
-                fee_percentage,
-                fee_balance: 0,
+                unpaid_amount: metadata.funding_amount_limit,
+                ..metadata
+            },
+            dao: DAO {
+                created_at: None,
+                setup_at: None,
+                factory_account_id: dao.factory_account_id,
+            },
+            fees: Fees { balance: 0, ..fees },
+            staking: Staking {
+                created_at: None,
+                ..staking
             },
         }
     }
@@ -92,28 +83,36 @@ impl Escrow {
             env::panic_str("ERR_DEPOSIT_NOT_ALLOWED");
         }
 
-        if amount > self.get_unpaid_amount() {
+        if amount > self.get_metadata().unpaid_amount {
             env::panic_str("ERR_DEPOSIT_NOT_ALLOWED");
         }
 
         // Fee Calculations
-        let fee_amount = (amount as f32 * self.metadata.fee_percentage) as Balance;
-        self.metadata.fee_balance = self.metadata.fee_balance
+        let fee_amount = (amount as f32 * self.get_fees().percentage) as Balance;
+        self.fees.balance = self
+            .get_fees()
+            .balance
             .checked_add(fee_amount)
             .unwrap_or_else(|| env::panic_str("ERR_FEE_BALANCE_OVERFLOW"));
-        let amount_fee = amount.checked_sub(fee_amount)
+        let amount_minus_fee = amount
+            .checked_sub(fee_amount)
             .unwrap_or_else(|| env::panic_str("ERR_AMOUNT_OVERFLOW"));
 
         // Register transfer
-        self.ft.internal_deposit(&sender_id, amount_fee);
+        self.ft.internal_deposit(&sender_id, amount_minus_fee);
         self.deposits.insert(&sender_id);
-        self.metadata.unpaid_amount = self
+        self.get_metadata().unpaid_amount = self
             .metadata
             .unpaid_amount
             .checked_sub(amount)
             .unwrap_or_else(|| env::panic_str("ERR_UNPAID_AMOUNT_OVERFLOW"));
 
-        log!("Successful Deposit. Account: {}, Amount: {}, Fee: {}", sender_id, amount_fee, fee_amount);
+        log!(
+            "[deposit]: sender_id: {}, amount_minus_fee: {}, fee: {}",
+            sender_id,
+            amount_minus_fee,
+            fee_amount
+        );
     }
 
     /**
@@ -129,7 +128,7 @@ impl Escrow {
         let receiver_id = env::signer_account_id();
         let amount = self.ft.internal_unwrap_balance_of(&receiver_id);
 
-        let promise = Promise::new(self.metadata.nep_141.clone()).function_call(
+        let promise = Promise::new(self.get_metadata().nep_141.clone()).function_call(
             "ft_transfer".to_string(),
             json!({
                 "amount": amount.to_string(),
@@ -164,21 +163,21 @@ impl Escrow {
             }
         }
 
-        if self.metadata.fee_balance == 0 {
+        if self.get_fees().balance == 0 {
             env::panic_str("ERR_FEES_ALREADY_CLAIMED");
         }
 
-        let mut amount = self.metadata.fee_balance;
+        let mut amount = self.get_fees().balance;
 
         if !self.is_deposit_allowed() && !self.is_withdrawal_allowed() {
             // If the escrow is successful
             // Half of the fees are collected and half invested in the asset
-            amount = (self.metadata.fee_balance as f32 * 0.5) as Balance;
+            amount = (self.get_fees().balance as f32 * 0.5) as Balance;
         }
 
-        let receiver_id = self.metadata.maintainer.clone();
+        let receiver_id = self.get_metadata().maintainer_account_id.clone();
 
-        let promise = Promise::new(self.metadata.nep_141.clone()).function_call(
+        let promise = Promise::new(self.get_metadata().nep_141.clone()).function_call(
             "ft_transfer".to_string(),
             json!({
                 "amount": amount.to_string(),
@@ -190,7 +189,9 @@ impl Escrow {
             GAS_FT_TRANSFER,
         );
 
-        amount = self.metadata.fee_balance
+        amount = self
+            .get_fees()
+            .balance
             .checked_sub(amount)
             .unwrap_or_else(|| env::panic_str("ERR_FEE_BALANCE_OVERFLOW"));
 
@@ -240,14 +241,15 @@ impl Escrow {
             env::panic_str("ERR_DAO_ALREADY_CREATED");
         }
 
-        let args = self.get_dao_config(self.metadata.id.clone(),
+        let args = self.get_dao_config(
+            self.get_metadata().id.clone(),
             vec![env::current_account_id().to_string()],
             vec![env::current_account_id().to_string()],
         );
 
         let promise = Promise::new(self.get_dao_factory_account_id()).function_call(
             "create".to_string(),
-            json!({ "name": self.metadata.id, "args": Base64VecU8(args) })
+            json!({ "name": self.get_metadata().id, "args": Base64VecU8(args) })
                 .to_string()
                 .into_bytes(),
             env::attached_deposit(),
@@ -278,12 +280,12 @@ impl Escrow {
             env::panic_str("ERR_STAKE_ALREADY_CREATED");
         }
 
-        let promise = Promise::new(self.metadata.staking_factory.clone()).function_call(
+        let promise = Promise::new(self.get_staking().factory_account_id.clone()).function_call(
             "create_stake".to_string(),
             json!({
-                "name": self.metadata.id,
-                "dao_account_id": format!("{}.{}", self.metadata.id, self.metadata.dao_factory),
-                "token_account_id": self.metadata.nep_141,
+                "name": self.get_metadata().id,
+                "dao_account_id": format!("{}.{}", self.get_metadata().id, self.get_dao_factory_account_id()),
+                "token_account_id": self.get_metadata().nep_141,
                 "unstake_period": PROPOSAL_PERIOD.to_string(),
             })
             .to_string()
@@ -313,14 +315,22 @@ impl Escrow {
             env::panic_str("ERR_STAKE_IS_NOT_CREATED");
         }
 
-        if self.is_dao_setuped() {
+        if self.is_dao_setup() {
             env::panic_str("ERR_DAO_ALREADY_SETUPED");
         }
 
-        let dao_account: AccountId = format!("{}.{}", self.metadata.id, self.metadata.dao_factory)
-            .parse()
-            .unwrap();
-        let stake_account = format!("{}.{}", self.metadata.id, self.metadata.staking_factory);
+        let dao_account: AccountId = format!(
+            "{}.{}",
+            self.get_metadata().id,
+            self.get_dao_factory_account_id()
+        )
+        .parse()
+        .unwrap();
+        let stake_account = format!(
+            "{}.{}",
+            self.get_metadata().id,
+            self.get_staking().factory_account_id
+        );
         let mut promise: Promise = Promise::new(dao_account.clone());
 
         // Create Staking Proposal
@@ -364,7 +374,7 @@ impl Escrow {
                     "kind": {
                         "ChangePolicy": {
                             "policy": self.get_policy(vec![
-                                self.metadata.maintainer.to_string()],
+                                self.get_metadata().maintainer_account_id.to_string()],
                                 self.get_deposit_accounts(),
                             )
                         }
@@ -442,7 +452,12 @@ impl Escrow {
         })
     }
 
-    fn get_dao_config(&self, name: String, council: Vec<String>, investors: Vec<String>) -> Vec<u8> {
+    fn get_dao_config(
+        &self,
+        name: String,
+        council: Vec<String>,
+        investors: Vec<String>,
+    ) -> Vec<u8> {
         json!({
             "policy": self.get_policy(council, investors),
             "config": {

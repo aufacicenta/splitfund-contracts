@@ -12,13 +12,17 @@ impl Escrow {
 
                 self.ft.internal_withdraw(&receiver_id, amount);
                 self.deposits.remove(&receiver_id);
-                self.metadata.unpaid_amount = self
+                self.get_metadata().unpaid_amount = self
                     .metadata
                     .unpaid_amount
                     .checked_add(amount)
                     .unwrap_or_else(|| env::panic_str("ERR_UNPAID_AMOUNT_OVERFLOW"));
 
-                log!("Successful Withdrawal. Account: {}, Amount: {}", receiver_id, amount);
+                log!(
+                    "[on_withdraw_callback]: receiver_id: {}, amount: {}",
+                    receiver_id,
+                    amount
+                );
 
                 amount
             }
@@ -33,18 +37,22 @@ impl Escrow {
                 let amount: Balance = amount.parse::<Balance>().unwrap();
 
                 if amount > 0 {
-                    self.ft.internal_deposit(&self.metadata.maintainer.clone(), amount);
+                    self.ft.internal_deposit(
+                        &self.get_metadata().maintainer_account_id.clone(),
+                        amount,
+                    );
                 }
-                
-                log!("Successful Claim Fees. Maintainer: {}, Claim: {}, DAO Investment {}",
-                    self.metadata.maintainer,
-                    self.metadata.fee_balance - amount,
+
+                log!(
+                    "[on_claim_fees_callback]: maintainer: {}, claim: {}, DAO Investment {}",
+                    self.get_metadata().maintainer_account_id,
+                    self.get_fees().balance - amount,
                     amount,
                 );
 
                 //@TODO Burn unassigned tokens (fees)
 
-                self.metadata.fee_balance = 0;
+                self.fees.balance = 0;
                 true
             }
             _ => env::panic_str("ERR_CLAIM_FEES_UNSUCCESSFUL"),
@@ -55,7 +63,7 @@ impl Escrow {
     pub fn on_create_dao_callback(&mut self) -> bool {
         match env::promise_result(0) {
             PromiseResult::Successful(_result) => {
-                self.metadata.dao_created = true;
+                self.dao.created_at = Some(self.get_block_timestamp());
                 true
             }
             _ => env::panic_str("ERR_CREATE_DAO_UNSUCCESSFUL"),
@@ -66,7 +74,7 @@ impl Escrow {
     pub fn on_create_stake_callback(&mut self) -> bool {
         match env::promise_result(0) {
             PromiseResult::Successful(_result) => {
-                self.metadata.stake_created = true;
+                self.staking.created_at = Some(self.get_block_timestamp());
                 true
             }
             _ => env::panic_str("ERR_CREATE_STAKE_UNSUCCESSFUL"),
@@ -77,7 +85,7 @@ impl Escrow {
     pub fn on_create_proposals_callback(&mut self) -> bool {
         match env::promise_result(0) {
             PromiseResult::Successful(_result) => {
-                self.metadata.dao_setuped = true;
+                self.dao.setup_at = Some(self.get_block_timestamp());
                 true
             }
             _ => env::panic_str("ERR_DAO_SETUP_UNSUCCESSFUL"),
