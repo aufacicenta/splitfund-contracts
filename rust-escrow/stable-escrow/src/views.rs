@@ -21,7 +21,7 @@ impl Escrow {
     }
 
     pub fn has_contract_expired(&self) -> bool {
-        self.get_metadata().expires_at < self.get_block_timestamp().try_into().unwrap()
+        self.get_metadata().expires_at < self.get_block_timestamp()
     }
 
     pub fn is_funding_reached(&self) -> bool {
