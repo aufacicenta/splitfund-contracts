@@ -1,4 +1,4 @@
-use near_sdk::{env, near_bindgen, AccountId, Balance};
+use near_sdk::{env, near_bindgen, Balance};
 
 use crate::storage::*;
 
@@ -6,10 +6,6 @@ use crate::storage::*;
 impl Escrow {
     pub fn get_total_funds(&self) -> Balance {
         self.get_metadata().funding_amount_limit - self.get_metadata().unpaid_amount
-    }
-
-    pub fn get_dao_factory_account_id(&self) -> AccountId {
-        self.dao.factory_account_id.clone()
     }
 
     pub fn is_deposit_allowed(&self) -> bool {
@@ -57,6 +53,10 @@ impl Escrow {
             Some(_timestamp) => true,
             None => false,
         }
+    }
+
+    pub fn get_dao(&self) -> DAO {
+        self.dao.clone()
     }
 
     pub fn get_fees(&self) -> Fees {

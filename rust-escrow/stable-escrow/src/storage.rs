@@ -29,7 +29,6 @@ pub struct Escrow {
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, TS)]
 #[ts(export)]
 pub struct Metadata {
-    pub id: String,
     #[ts(type = "string")]
     pub expires_at: Timestamp,
     #[ts(type = "string")]

@@ -241,15 +241,17 @@ impl Escrow {
             env::panic_str("ERR_DAO_ALREADY_CREATED");
         }
 
+        let name = self.ft_metadata().name;
+
         let args = self.get_dao_config(
-            self.get_metadata().id.clone(),
+            name.clone(),
             vec![env::current_account_id().to_string()],
             vec![env::current_account_id().to_string()],
         );
 
-        let promise = Promise::new(self.get_dao_factory_account_id()).function_call(
+        let promise = Promise::new(self.get_dao().factory_account_id).function_call(
             "create".to_string(),
-            json!({ "name": self.get_metadata().id, "args": Base64VecU8(args) })
+            json!({ "name": name.clone(), "args": Base64VecU8(args) })
                 .to_string()
                 .into_bytes(),
             env::attached_deposit(),
@@ -280,11 +282,13 @@ impl Escrow {
             env::panic_str("ERR_STAKE_ALREADY_CREATED");
         }
 
-        let promise = Promise::new(self.get_staking().factory_account_id.clone()).function_call(
+        let name = self.ft_metadata().name;
+
+        let promise = Promise::new(self.get_staking().factory_account_id).function_call(
             "create_stake".to_string(),
             json!({
-                "name": self.get_metadata().id,
-                "dao_account_id": format!("{}.{}", self.get_metadata().id, self.get_dao_factory_account_id()),
+                "name": name,
+                "dao_account_id": format!("{}.{}", name, self.get_dao().factory_account_id),
                 "token_account_id": self.get_metadata().nep_141,
                 "unstake_period": PROPOSAL_PERIOD.to_string(),
             })
@@ -319,16 +323,18 @@ impl Escrow {
             env::panic_str("ERR_DAO_ALREADY_SETUPED");
         }
 
+        let name = self.ft_metadata().name;
+
         let dao_account: AccountId = format!(
             "{}.{}",
-            self.get_metadata().id,
-            self.get_dao_factory_account_id()
+            name,
+            self.get_dao().factory_account_id
         )
         .parse()
         .unwrap();
         let stake_account = format!(
             "{}.{}",
-            self.get_metadata().id,
+            name,
             self.get_staking().factory_account_id
         );
         let mut promise: Promise = Promise::new(dao_account.clone());

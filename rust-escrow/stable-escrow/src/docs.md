@@ -30,7 +30,7 @@ near delete es1.$ID $ID
 near create-account es1.$ID --masterAccount $ID --initialBalance 5
 near deploy --wasmFile ../src/stable_escrow.wasm --accountId es1.$ID
 # Vence en diciembre, funding 10,0000
-near call es1.$ID new '{"decimals": 2, "expires_at": 1670215945000000000, "funding_amount_limit": "10000", "id": "sa18", "nep_141": "'$ID'", "dao_factory": "sputnikv2.testnet", "maintainer": "'$ID'", "metadata_url": "", "staking_factory": "sf1.'$ID'", "fee_percentage": 0.02}' --accountId $ID
+near call es1.$ID new '{"metadata": {"id": "sa18", "expires_at": 1670215945000000000, "funding_amount_limit": 10000, "unpaid_amount": 0,  "nep_141": "'$ID'", "maintainer_account_id": "'$ID'", "metadata_url": ""}, "fees": {"percentage": 0.02, "balance": 100}, "dao": {"factory_account_id": "sputnikv2.testnet"}, "staking": {"factory_account_id": "sf1.'$ID'"}, "fungible_token_metadata": {"spec": "ft-1.0.0", "name": "sa18", "symbol": "sa18", "decimals": 2}}' --accountId $ID
 
 near view es1.$ID ft_balance_of '{"account_id": "'bob.$ID'"}'
 near view es1.$ID ft_total_supply
