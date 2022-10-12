@@ -50,7 +50,7 @@ impl Escrow {
         let mut deposits = UnorderedSet::new(b"d".to_vec());
         deposits.insert(&metadata.maintainer_account_id);
 
-        Self {
+        let mut this = Self {
             deposits,
             ft,
             ft_metadata: LazyOption::new(b"m".to_vec(), Some(&ft_metadata)),
@@ -68,7 +68,11 @@ impl Escrow {
                 created_at: None,
                 ..staking
             },
-        }
+            account_storage_usage: 0,
+        };
+
+        this.measure_account_storage_usage();
+        this
     }
 
     /**
@@ -475,10 +479,20 @@ impl Escrow {
         .to_string()
         .into_bytes()
     }
+
+    fn measure_account_storage_usage(&mut self) {
+        let initial_storage_usage = env::storage_usage();
+        let tmp_account_id = AccountId::new_unchecked("a".repeat(64));
+        self.deposits.insert(&tmp_account_id);
+        self.ft.accounts.insert(&tmp_account_id, &0u128);
+        self.account_storage_usage = env::storage_usage() - initial_storage_usage;
+        self.ft.accounts.remove(&tmp_account_id);
+        self.deposits.remove(&tmp_account_id);
+    }
 }
 
 near_contract_standards::impl_fungible_token_core!(Escrow, ft);
-near_contract_standards::impl_fungible_token_storage!(Escrow, ft);
+//near_contract_standards::impl_fungible_token_storage!(Escrow, ft);
 
 #[near_bindgen]
 impl FungibleTokenMetadataProvider for Escrow {

@@ -4,7 +4,7 @@ use near_sdk::{
     collections::{LazyOption, UnorderedSet},
     near_bindgen,
     serde::{Deserialize, Serialize},
-    AccountId, Balance,
+    AccountId, Balance, StorageUsage
 };
 use ts_rs::TS;
 
@@ -24,6 +24,7 @@ pub struct Escrow {
     pub dao: DAO,
     pub fees: Fees,
     pub staking: Staking,
+    pub account_storage_usage: StorageUsage,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, TS)]

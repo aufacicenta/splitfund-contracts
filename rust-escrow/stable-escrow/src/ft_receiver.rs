@@ -5,6 +5,8 @@ use crate::*;
 
 #[near_bindgen]
 impl FungibleTokenReceiver for Escrow {
+    // `msg` doesn't affect the implementation for ft_on_transfer.
+    #[allow(unused_variables)]
     #[payable]
     fn ft_on_transfer(
         &mut self,

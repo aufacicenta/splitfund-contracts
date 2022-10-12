@@ -1,6 +1,9 @@
 pub mod storage;
 pub use storage::*;
 
+pub mod storage_impl;
+pub use storage_impl::*;
+
 pub mod consts;
 pub use consts::*;
 
