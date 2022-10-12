@@ -15,15 +15,13 @@ pub type Timestamp = u64;
 #[ts(export)]
 pub struct Escrow {
     #[ts(type = "string[]")]
-    pub deposits: UnorderedSet<AccountId>, //@TODO Calculate storage for this
+    pub deposits: UnorderedSet<AccountId>,
     #[ts(type = "FungibleToken")]
     pub ft: FungibleToken,
     #[ts(type = "FungibleTokenMetadata")]
     pub ft_metadata: LazyOption<FungibleTokenMetadata>,
     pub metadata: Metadata,
-    pub dao: DAO,
     pub fees: Fees,
-    pub staking: Staking,
     pub account_storage_usage: StorageUsage,
 }
 
@@ -45,28 +43,8 @@ pub struct Metadata {
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, TS)]
 #[ts(export)]
-pub struct DAO {
-    #[ts(type = "string")]
-    pub created_at: Option<Timestamp>,
-    #[ts(type = "string")]
-    pub setup_at: Option<Timestamp>,
-    #[ts(type = "string")]
-    pub factory_account_id: AccountId,
-}
-
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, TS)]
-#[ts(export)]
 pub struct Fees {
     pub percentage: f32,
     #[ts(type = "string")]
     pub balance: Balance,
-}
-
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, TS)]
-#[ts(export)]
-pub struct Staking {
-    #[ts(type = "string")]
-    pub factory_account_id: AccountId,
-    #[ts(type = "string")]
-    pub created_at: Option<Timestamp>,
 }

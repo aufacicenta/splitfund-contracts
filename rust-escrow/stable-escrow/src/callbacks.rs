@@ -58,37 +58,4 @@ impl Escrow {
             _ => env::panic_str("ERR_CLAIM_FEES_UNSUCCESSFUL"),
         }
     }
-
-    #[private]
-    pub fn on_create_dao_callback(&mut self) -> bool {
-        match env::promise_result(0) {
-            PromiseResult::Successful(_result) => {
-                self.dao.created_at = Some(self.get_block_timestamp());
-                true
-            }
-            _ => env::panic_str("ERR_CREATE_DAO_UNSUCCESSFUL"),
-        }
-    }
-
-    #[private]
-    pub fn on_create_stake_callback(&mut self) -> bool {
-        match env::promise_result(0) {
-            PromiseResult::Successful(_result) => {
-                self.staking.created_at = Some(self.get_block_timestamp());
-                true
-            }
-            _ => env::panic_str("ERR_CREATE_STAKE_UNSUCCESSFUL"),
-        }
-    }
-
-    #[private]
-    pub fn on_create_proposals_callback(&mut self) -> bool {
-        match env::promise_result(0) {
-            PromiseResult::Successful(_result) => {
-                self.dao.setup_at = Some(self.get_block_timestamp());
-                true
-            }
-            _ => env::panic_str("ERR_DAO_SETUP_UNSUCCESSFUL"),
-        }
-    }
 }

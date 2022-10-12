@@ -34,37 +34,8 @@ impl Escrow {
         accounts
     }
 
-    pub fn is_dao_created(&self) -> bool {
-        match self.dao.created_at {
-            Some(_timestamp) => true,
-            None => false,
-        }
-    }
-
-    pub fn is_dao_setup(&self) -> bool {
-        match self.dao.setup_at {
-            Some(_timestamp) => true,
-            None => false,
-        }
-    }
-
-    pub fn is_stake_created(&self) -> bool {
-        match self.staking.created_at {
-            Some(_timestamp) => true,
-            None => false,
-        }
-    }
-
-    pub fn get_dao(&self) -> DAO {
-        self.dao.clone()
-    }
-
     pub fn get_fees(&self) -> Fees {
         self.fees.clone()
-    }
-
-    pub fn get_staking(&self) -> Staking {
-        self.staking.clone()
     }
 
     pub fn get_metadata(&self) -> Metadata {
