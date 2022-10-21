@@ -1,4 +1,5 @@
 use near_sdk::{
+    assert_one_yocto,
     collections::{LazyOption, UnorderedSet},
     env,
     json_types::U128,
@@ -56,7 +57,7 @@ impl Escrow {
                 unpaid_amount: metadata.funding_amount_limit,
                 ..metadata
             },
-            fees: Fees { balance: 0, ..fees },
+            fees: Fees { amount: 0, claimed: false, ..fees },
             account_storage_usage: 0,
         };
 
@@ -82,19 +83,19 @@ impl Escrow {
 
         // Fee Calculations
         let fee_amount = (amount as f32 * self.get_fees().percentage) as Balance;
-        self.fees.balance = self
+        self.fees.amount = self
             .get_fees()
-            .balance
+            .amount
             .checked_add(fee_amount)
-            .unwrap_or_else(|| env::panic_str("ERR_FEE_BALANCE_OVERFLOW"));
+            .unwrap_or_else(|| env::panic_str("ERR_FEES_AMOUNT_OVERFLOW"));
         let amount_minus_fee = amount
             .checked_sub(fee_amount)
-            .unwrap_or_else(|| env::panic_str("ERR_AMOUNT_OVERFLOW"));
+            .unwrap_or_else(|| env::panic_str("ERR_AMOUNT_MINUS_FEE_OVERFLOW"));
 
         // Register transfer
         self.ft.internal_deposit(&sender_id, amount_minus_fee);
         self.deposits.insert(&sender_id);
-        self.get_metadata().unpaid_amount = self
+        self.metadata.unpaid_amount = self
             .metadata
             .unpaid_amount
             .checked_sub(amount)
@@ -114,6 +115,8 @@ impl Escrow {
      */
     #[payable]
     pub fn withdraw(&mut self) -> Promise {
+        assert_one_yocto();
+
         if !self.is_withdrawal_allowed() {
             env::panic_str("ERR_WITHDRAWAL_NOT_ALLOWED");
         }
@@ -150,30 +153,30 @@ impl Escrow {
 
     #[payable]
     pub fn claim_fees(&mut self) -> Promise {
-        if !self.is_withdrawal_allowed() {
-            if self.is_deposit_allowed() || self.is_withdrawal_allowed() {
-                env::panic_str("ERR_CLAIM_FEES_NOT_ALLOWED");
-            }
+        assert_one_yocto();
+
+        if self.is_deposit_allowed() {
+            env::panic_str("ERR_CLAIM_FEES_NOT_ALLOWED");
         }
 
-        if self.get_fees().balance == 0 {
+        if self.get_fees().claimed {
             env::panic_str("ERR_FEES_ALREADY_CLAIMED");
         }
 
-        let mut amount = self.get_fees().balance;
+        let mut fees_to_collect = self.get_fees().amount;
 
         if !self.is_deposit_allowed() && !self.is_withdrawal_allowed() {
             // If the escrow is successful
             // Half of the fees are collected and half invested in the asset
-            amount = (self.get_fees().balance as f32 * 0.5) as Balance;
+            fees_to_collect = (self.get_fees().amount as f32 * 0.5) as Balance;
         }
 
-        let receiver_id = self.get_metadata().maintainer_account_id.clone();
+        let receiver_id = self.get_fees().account_id.clone();
 
         let promise = Promise::new(self.get_metadata().nep_141.clone()).function_call(
             "ft_transfer".to_string(),
             json!({
-                "amount": amount.to_string(),
+                "amount": fees_to_collect.to_string(),
                 "receiver_id": receiver_id.to_string(),
             })
             .to_string()
@@ -182,16 +185,16 @@ impl Escrow {
             GAS_FT_TRANSFER,
         );
 
-        amount = self
+        let fees_to_invest = self
             .get_fees()
-            .balance
-            .checked_sub(amount)
-            .unwrap_or_else(|| env::panic_str("ERR_FEE_BALANCE_OVERFLOW"));
+            .amount
+            .checked_sub(fees_to_collect)
+            .unwrap_or_else(|| env::panic_str("ERR_FEES_TO_INVEST_OVERFLOW"));
 
         let callback = Promise::new(env::current_account_id()).function_call(
             "on_claim_fees_callback".to_string(),
             json!({
-                "amount": amount.to_string(),
+                "fees_to_invest": fees_to_invest.to_string(),
             })
             .to_string()
             .into_bytes(),
@@ -208,16 +211,45 @@ impl Escrow {
      * Make the depositors members of the DAO
      */
     #[payable]
-    pub fn _delegate_funds(&mut self) {
+    pub fn delegate_funds(&mut self, amount: Option<U128>) -> Promise {
+        assert_one_yocto();
+
         if self.is_deposit_allowed() || self.is_withdrawal_allowed() {
             env::panic_str("ERR_DELEGATE_NOT_ALLOWED");
         }
 
-        // env::panic_str("ERR_TOTAL_FUNDS_OVERFLOW");
+        let receiver_id = self.get_metadata().maintainer_account_id.clone();
 
-        // @TODO charge a fee here (1.5% initially?) when a property is sold by our contract
+        // Half of the fees are collected and half invested in the asset
+        let fee_collected = (self.get_fees().amount as f32 * 0.5) as Balance;
 
-        // @TODO transfer the NEP141 stable coin funds to the DAO
+        // If amount is None then use the funding_amount_limit
+        let amount = amount.unwrap_or(U128(self
+            .get_metadata()
+            .funding_amount_limit));
+        
+        // Amount to delegate minus fees collected
+        let amount_minus_fee = amount.0
+            .checked_sub(fee_collected)
+            .unwrap_or_else(|| env::panic_str("ERR_AMOUNT_MINUS_FEE_OVERFLOW"));
+
+        log!(
+            "[on_delegate_funds]: receiver_id: {}, amount: {}",
+            receiver_id,
+            amount_minus_fee
+        );
+
+        Promise::new(self.get_metadata().nep_141.clone()).function_call(
+            "ft_transfer".to_string(),
+            json!({
+                "amount": amount_minus_fee.to_string(),
+                "receiver_id": receiver_id.to_string(),
+            })
+            .to_string()
+            .into_bytes(),
+            1, // 1 yoctoNEAR
+            GAS_FT_TRANSFER,
+        )
     }
 }
 

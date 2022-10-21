@@ -34,4 +34,7 @@ pub struct Metadata {
 pub struct Fees {
     pub percentage: f32,
     pub balance: Balance,
+    pub amount: Balance,
+    pub account_id: AccountId,
+    pub claimed: bool,
 }
