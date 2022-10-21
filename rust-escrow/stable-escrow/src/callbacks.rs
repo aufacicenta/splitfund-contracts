@@ -1,9 +1,4 @@
-use near_sdk::{
-    env,
-    json_types::U128,
-    log, near_bindgen,
-    AccountId, Balance, PromiseResult,
-};
+use near_sdk::{env, json_types::U128, log, near_bindgen, AccountId, Balance, PromiseResult};
 
 use crate::storage::*;
 
@@ -38,7 +33,7 @@ impl Escrow {
         match env::promise_result(0) {
             PromiseResult::Successful(_result) => {
                 // If fees_to_invest > 0, the escrow is successful
-                // Half of the fees are collected and half invested in the asset 
+                // Half of the fees are collected and half invested in the asset
                 if fees_to_invest.0 > 0 {
                     self.ft.internal_deposit(
                         &self.get_metadata().maintainer_account_id.clone(),
