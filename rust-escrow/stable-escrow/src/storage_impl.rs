@@ -73,9 +73,7 @@ impl StorageManagement for Escrow {
                 Promise::new(account_id.clone()).transfer(self.storage_balance_bounds().min.0 + 1);
                 true
             } else {
-                env::panic_str(
-                    "Can't unregister the account with the positive balance",
-                )
+                env::panic_str("Can't unregister the account with the positive balance")
             }
         } else {
             log!("The account {} is not registered", &account_id);
@@ -94,7 +92,10 @@ impl StorageManagement for Escrow {
 
     fn storage_balance_of(&self, account_id: AccountId) -> Option<StorageBalance> {
         if self.ft.accounts.contains_key(&account_id) {
-            Some(StorageBalance { total: self.storage_balance_bounds().min, available: 0.into() })
+            Some(StorageBalance {
+                total: self.storage_balance_bounds().min,
+                available: 0.into(),
+            })
         } else {
             None
         }

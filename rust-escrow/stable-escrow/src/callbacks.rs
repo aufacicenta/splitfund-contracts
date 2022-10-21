@@ -1,9 +1,4 @@
-use near_sdk::{
-    env,
-    json_types::U128,
-    log, near_bindgen,
-    AccountId, Balance, PromiseResult,
-};
+use near_sdk::{env, json_types::U128, log, near_bindgen, AccountId, Balance, PromiseResult};
 
 use crate::storage::*;
 

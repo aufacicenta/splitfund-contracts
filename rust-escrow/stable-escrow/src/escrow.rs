@@ -1,7 +1,7 @@
 use near_sdk::{
     assert_one_yocto,
     collections::{LazyOption, UnorderedSet},
-    env,
+    env, ext_contract,
     json_types::U128,
     log, near_bindgen,
     serde_json::json,
@@ -9,12 +9,21 @@ use near_sdk::{
 };
 
 use near_contract_standards::fungible_token::{
+    core::ext_ft_core,
     metadata::{FungibleTokenMetadata, FungibleTokenMetadataProvider},
     FungibleToken,
 };
 
+//use crate::callbacks::*;
 use crate::consts::*;
 use crate::storage::*;
+
+// Interface of this contract, for callbacks
+#[ext_contract(ext_self)]
+trait Callbacks {
+  fn on_withdraw_callback(&mut self, receiver_id: AccountId, amount: U128) -> Balance;
+  fn on_claim_fees_callback(&mut self, amount: U128) -> bool;
+}
 
 impl Default for Escrow {
     fn default() -> Self {
@@ -73,7 +82,11 @@ impl Escrow {
                 unpaid_amount: metadata.funding_amount_limit,
                 ..metadata
             },
-            fees: Fees { amount: 0, claimed: false, ..fees },
+            fees: Fees {
+                amount: 0,
+                claimed: false,
+                ..fees
+            },
             account_storage_usage: 0,
         };
 
@@ -138,31 +151,18 @@ impl Escrow {
         }
 
         let receiver_id = env::signer_account_id();
-        let amount = self.ft.internal_unwrap_balance_of(&receiver_id);
+        let amount = U128(self.ft.internal_unwrap_balance_of(&receiver_id));
+        
+        // NEP141 Transfer
+        let promise = ext_ft_core::ext(self.get_metadata().nep_141.clone())
+            .with_attached_deposit(1)
+            .with_static_gas(GAS_ON_TRANSFER)
+            .ft_transfer(receiver_id.clone(), amount, None);
 
-        let promise = Promise::new(self.get_metadata().nep_141.clone()).function_call(
-            "ft_transfer".to_string(),
-            json!({
-                "amount": amount.to_string(),
-                "receiver_id": receiver_id.to_string(),
-            })
-            .to_string()
-            .into_bytes(),
-            1, // 1 yoctoNEAR
-            GAS_ON_TRANSFER,
-        );
-
-        let callback = Promise::new(env::current_account_id()).function_call(
-            "on_withdraw_callback".to_string(),
-            json!({
-                "receiver_id": receiver_id.to_string(),
-                "amount": amount.to_string(),
-            })
-            .to_string()
-            .into_bytes(),
-            0,
-            GAS_ON_TRANSFER_CB,
-        );
+        let callback = ext_self::ext(env::current_account_id())
+            .with_static_gas(GAS_ON_TRANSFER_CB)
+            .with_attached_deposit(0)
+            .on_withdraw_callback(receiver_id.clone(), amount);
 
         promise.then(callback)
     }
@@ -179,31 +179,19 @@ impl Escrow {
             env::panic_str("ERR_FEES_ALREADY_CLAIMED");
         }
 
-        let fees_amount = self.get_fees().amount;
+        let fees_amount = U128(self.get_fees().amount);
         let receiver_id = self.get_fees().account_id.clone();
 
-        let promise = Promise::new(self.get_metadata().nep_141.clone()).function_call(
-            "ft_transfer".to_string(),
-            json!({
-                "amount": fees_amount.to_string(),
-                "receiver_id": receiver_id.to_string(),
-            })
-            .to_string()
-            .into_bytes(),
-            1, // 1 yoctoNEAR
-            GAS_ON_TRANSFER,
-        );
+        // NEP141 Transfer
+        let promise = ext_ft_core::ext(self.get_metadata().nep_141.clone())
+            .with_attached_deposit(1)
+            .with_static_gas(GAS_ON_TRANSFER)
+            .ft_transfer(receiver_id.clone(), fees_amount, None);
 
-        let callback = Promise::new(env::current_account_id()).function_call(
-            "on_claim_fees_callback".to_string(),
-            json!({
-                "amount": fees_amount.to_string(),
-            })
-            .to_string()
-            .into_bytes(),
-            0,
-            GAS_ON_TRANSFER_CB,
-        );
+        let callback = ext_self::ext(env::current_account_id())
+            .with_static_gas(GAS_ON_TRANSFER_CB)
+            .with_attached_deposit(0)
+            .on_claim_fees_callback(fees_amount);
 
         promise.then(callback)
     }
@@ -225,12 +213,11 @@ impl Escrow {
         let receiver_id = self.get_metadata().maintainer_account_id.clone();
         
         // If amount is None then use the funding_amount_limit
-        let amount = amount.unwrap_or(U128(self
-            .get_metadata()
-            .funding_amount_limit));
-        
-        // Amount to delegate minus fees
-        let amount_minus_fee = amount.0
+        let amount = amount.unwrap_or(U128(self.get_metadata().funding_amount_limit));
+
+        // Amount to delegate minus fees collected
+        let amount_minus_fee = amount
+            .0
             .checked_sub(fees_amount)
             .unwrap_or_else(|| env::panic_str("ERR_AMOUNT_MINUS_FEE_OVERFLOW"));
 
@@ -240,17 +227,11 @@ impl Escrow {
             amount_minus_fee
         );
 
-        Promise::new(self.get_metadata().nep_141.clone()).function_call(
-            "ft_transfer".to_string(),
-            json!({
-                "amount": amount_minus_fee.to_string(),
-                "receiver_id": receiver_id.to_string(),
-            })
-            .to_string()
-            .into_bytes(),
-            1, // 1 yoctoNEAR
-            GAS_ON_TRANSFER,
-        )
+        // NEP141 Transfer
+        ext_ft_core::ext(self.get_metadata().nep_141.clone())
+            .with_attached_deposit(1)
+            .with_static_gas(GAS_ON_TRANSFER)
+            .ft_transfer(receiver_id.clone(), U128(amount_minus_fee), None)
     }
 }
 
