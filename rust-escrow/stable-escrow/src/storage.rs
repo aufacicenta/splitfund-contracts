@@ -46,5 +46,8 @@ pub struct Metadata {
 pub struct Fees {
     pub percentage: f32,
     #[ts(type = "string")]
-    pub balance: Balance,
+    pub amount: Balance,
+    #[ts(type = "string")]
+    pub account_id: AccountId,
+    pub claimed: bool,
 }
