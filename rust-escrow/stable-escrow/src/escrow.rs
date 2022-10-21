@@ -163,20 +163,13 @@ impl Escrow {
             env::panic_str("ERR_FEES_ALREADY_CLAIMED");
         }
 
-        let mut fees_to_collect = self.get_fees().amount;
-
-        if !self.is_deposit_allowed() && !self.is_withdrawal_allowed() {
-            // If the escrow is successful
-            // Half of the fees are collected and half invested in the asset
-            fees_to_collect = (self.get_fees().amount as f32 * 0.5) as Balance;
-        }
-
+        let fees_amount = self.get_fees().amount;
         let receiver_id = self.get_fees().account_id.clone();
 
         let promise = Promise::new(self.get_metadata().nep_141.clone()).function_call(
             "ft_transfer".to_string(),
             json!({
-                "amount": fees_to_collect.to_string(),
+                "amount": fees_amount.to_string(),
                 "receiver_id": receiver_id.to_string(),
             })
             .to_string()
@@ -185,16 +178,10 @@ impl Escrow {
             GAS_FT_TRANSFER,
         );
 
-        let fees_to_invest = self
-            .get_fees()
-            .amount
-            .checked_sub(fees_to_collect)
-            .unwrap_or_else(|| env::panic_str("ERR_FEES_TO_INVEST_OVERFLOW"));
-
         let callback = Promise::new(env::current_account_id()).function_call(
             "on_claim_fees_callback".to_string(),
             json!({
-                "fees_to_invest": fees_to_invest.to_string(),
+                "amount": fees_amount.to_string(),
             })
             .to_string()
             .into_bytes(),
@@ -218,19 +205,17 @@ impl Escrow {
             env::panic_str("ERR_DELEGATE_NOT_ALLOWED");
         }
 
+        let fees_amount = self.get_fees().amount;
         let receiver_id = self.get_metadata().maintainer_account_id.clone();
-
-        // Half of the fees are collected and half invested in the asset
-        let fee_collected = (self.get_fees().amount as f32 * 0.5) as Balance;
-
+        
         // If amount is None then use the funding_amount_limit
         let amount = amount.unwrap_or(U128(self
             .get_metadata()
             .funding_amount_limit));
         
-        // Amount to delegate minus fees collected
+        // Amount to delegate minus fees
         let amount_minus_fee = amount.0
-            .checked_sub(fee_collected)
+            .checked_sub(fees_amount)
             .unwrap_or_else(|| env::panic_str("ERR_AMOUNT_MINUS_FEE_OVERFLOW"));
 
         log!(
