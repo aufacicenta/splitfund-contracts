@@ -36,13 +36,14 @@ near view es1.$ID ft_balance_of '{"account_id": "'bob.$ID'"}'
 near view es1.$ID ft_total_supply
 near view es1.$ID ft_metadata
 
-# Depositar
+# Register escrow with NEP141
 near call $ID storage_deposit '' --accountId es1.$ID --amount 0.00125 //@TODO Call storage_deposit as part of escrow creation
 near view $ID ft_balance_of '{"account_id": "'es1.$ID'"}'
 
-# Get storage to pay
+# Customer pays for storage
 near view es1.$ID storage_balance_bounds
 near call es1.$ID storage_deposit '' --accountId bob.$ID --amount 0.00361
+# Deposit
 near call $ID ft_transfer_call '{"receiver_id": "'es1.$ID'", "amount": "10000", "msg": ""}' --accountId bob.$ID --amount 0.000000000000000000000001 --gas 50000000000000
 
 near view es1.$ID ft_balance_of '{"account_id": "'bob.$ID'"}'
@@ -63,6 +64,13 @@ near view es1.$ID ft_balance_of '{"account_id": "'$ID'"}'
 near view es1.$ID ft_balance_of '{"account_id": "'es1.$ID'"}'
 near view es1.$ID ft_balance_of '{"account_id": "'bob.$ID'"}'
 
+# Delegate all funds
+near call es1.$ID delegate_funds --accountId bob.$ID --amount 0.000000000000000000000001
+near view $ID ft_balance_of '{"account_id": "'es1.$ID'"}'
+
+# Delegate with amount
+near call es1.$ID delegate_funds '{"amount": "500"}' --accountId bob.$ID --amount 0.000000000000000000000001
+near view $ID ft_balance_of '{"account_id": "'es1.$ID'"}'
 
 #####
 # Create DAO and Stake

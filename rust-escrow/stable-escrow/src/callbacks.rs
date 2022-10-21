@@ -34,23 +34,23 @@ impl Escrow {
     }
 
     #[private]
-    pub fn on_claim_fees_callback(&mut self, amount_to_invest: U128) -> bool {
+    pub fn on_claim_fees_callback(&mut self, fees_to_invest: U128) -> bool {
         match env::promise_result(0) {
             PromiseResult::Successful(_result) => {
-                // If amount_to_invest > 0, the escrow is successful
+                // If fees_to_invest > 0, the escrow is successful
                 // Half of the fees are collected and half invested in the asset 
-                if amount_to_invest.0 > 0 {
+                if fees_to_invest.0 > 0 {
                     self.ft.internal_deposit(
                         &self.get_metadata().maintainer_account_id.clone(),
-                        amount_to_invest.0,
+                        fees_to_invest.0,
                     );
                 }
 
                 log!(
-                    "[on_claim_fees_callback]: maintainer: {}, claim: {}, Investment {}",
-                    self.get_metadata().maintainer_account_id,
-                    self.get_fees().amount - amount_to_invest.0,
-                    amount_to_invest.0,
+                    "[on_claim_fees_callback]: fees_account_id: {}, claim: {}, Investment {}",
+                    self.get_fees().account_id,
+                    self.get_fees().amount - fees_to_invest.0,
+                    fees_to_invest.0,
                 );
 
                 //@TODO Burn unassigned tokens (fees)
