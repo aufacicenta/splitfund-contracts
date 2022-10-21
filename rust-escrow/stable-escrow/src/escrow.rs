@@ -14,7 +14,6 @@ use near_contract_standards::fungible_token::{
     FungibleToken,
 };
 
-//use crate::callbacks::*;
 use crate::consts::*;
 use crate::storage::*;
 
@@ -44,21 +43,13 @@ impl Escrow {
             env::panic_str("ERR_ALREADY_INITIALIZED");
         }
 
-        let ft_metadata = FungibleTokenMetadata {
-            spec: "ft-1.0.0".to_string(),
-            icon: None,
-            reference: None,
-            reference_hash: None,
-            ..fungible_token_metadata
-        };
-
         // Fungible Token Setup
-        let mut ft = FungibleToken::new(b"t".to_vec());
+        let mut ft = FungibleToken::new(StorageKeys::FungibleToken);
         ft.total_supply = metadata.funding_amount_limit;
         ft.internal_register_account(&metadata.maintainer_account_id);
 
         // Deposits Setup
-        let mut deposits = UnorderedSet::new(b"d".to_vec());
+        let mut deposits = UnorderedSet::new(StorageKeys::Deposits);
         deposits.insert(&metadata.maintainer_account_id);
 
         // Escrow Storage Deposit
@@ -77,7 +68,10 @@ impl Escrow {
         let mut this = Self {
             deposits,
             ft,
-            ft_metadata: LazyOption::new(b"m".to_vec(), Some(&ft_metadata)),
+            ft_metadata: LazyOption::new(
+                StorageKeys::FungibleTokenMetadata,
+                Some(&fungible_token_metadata),
+            ),
             metadata: Metadata {
                 unpaid_amount: metadata.funding_amount_limit,
                 ..metadata

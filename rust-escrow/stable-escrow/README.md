@@ -27,18 +27,11 @@ near delete es1.$ID $ID
 near create-account es1.$ID --masterAccount $ID --initialBalance 5
 near deploy --wasmFile ../src/stable_escrow.wasm --accountId es1.$ID
 # Vence en diciembre, funding 10000
-near call es1.$ID new '{"metadata": {"id": "sa18", "expires_at": 1670215945000000000, "funding_amount_limit": 10000, "unpaid_amount": 0,  "nep_141": "'$ID'", "maintainer_account_id": "'$ID'", "metadata_url": ""}, "fees": {"percentage": 0.02, "amount": 0, "account_id": "'$ID'", "claimed": false}, "fungible_token_metadata": {"spec": "ft-1.0.0", "name": "sa18", "symbol": "sa18", "decimals": 2}}' --accountId $ID
+near call es1.$ID new '{"metadata": {"expires_at": 1670215945000000000, "funding_amount_limit": 10000, "unpaid_amount": 0,  "nep_141": "'$ID'", "maintainer_account_id": "'$ID'", "metadata_url": ""}, "fees": {"percentage": 0.02, "amount": 0, "account_id": "'$ID'", "claimed": false}, "fungible_token_metadata": {"spec": "ft-1.0.0", "name": "sa18", "symbol": "sa18", "decimals": 2}}' --accountId $ID
 
 near view es1.$ID ft_balance_of '{"account_id": "'bob.$ID'"}'
 near view es1.$ID ft_total_supply
 near view es1.$ID ft_metadata
-```
-
-## Register escrow with NEP141
-
-```bash
-near call $ID storage_deposit '' --accountId es1.$ID --amount 0.00125 #//@TODO Call storage_deposit as part of escrow creation
-near view $ID ft_balance_of '{"account_id": "'es1.$ID'"}'
 ```
 
 ## Deposit

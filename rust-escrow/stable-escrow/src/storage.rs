@@ -4,7 +4,7 @@ use near_sdk::{
     collections::{LazyOption, UnorderedSet},
     near_bindgen,
     serde::{Deserialize, Serialize},
-    AccountId, Balance, StorageUsage,
+    AccountId, Balance, BorshStorageKey, StorageUsage,
 };
 
 pub type Timestamp = u64;
@@ -33,8 +33,14 @@ pub struct Metadata {
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone)]
 pub struct Fees {
     pub percentage: f32,
-    pub balance: Balance,
     pub amount: Balance,
     pub account_id: AccountId,
     pub claimed: bool,
+}
+
+#[derive(BorshStorageKey, BorshSerialize)]
+pub enum StorageKeys {
+    Deposits,
+    FungibleToken,
+    FungibleTokenMetadata,
 }
