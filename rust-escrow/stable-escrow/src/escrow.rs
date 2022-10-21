@@ -29,6 +29,7 @@ impl Escrow {
         metadata: Metadata,
         fees: Fees,
         fungible_token_metadata: FungibleTokenMetadata,
+        storage_deposit_amount: Option<Balance>,
     ) -> Self {
         if env::state_exists() {
             env::panic_str("ERR_ALREADY_INITIALIZED");
@@ -42,12 +43,27 @@ impl Escrow {
             ..fungible_token_metadata
         };
 
+        // Fungible Token Setup
         let mut ft = FungibleToken::new(b"t".to_vec());
         ft.total_supply = metadata.funding_amount_limit;
         ft.internal_register_account(&metadata.maintainer_account_id);
 
+        // Deposits Setup
         let mut deposits = UnorderedSet::new(b"d".to_vec());
         deposits.insert(&metadata.maintainer_account_id);
+
+        // Escrow Storage Deposit
+        let storage_deposit_amount = storage_deposit_amount.
+            unwrap_or(BALANCE_ON_STORAGE_DEPOSIT);
+
+        Promise::new(metadata.nep_141.clone()).function_call(
+            "storage_deposit".to_string(),
+            json!({})
+            .to_string()
+            .into_bytes(),
+            storage_deposit_amount,
+            GAS_ON_TRANSFER,
+        );
 
         let mut this = Self {
             deposits,
@@ -133,7 +149,7 @@ impl Escrow {
             .to_string()
             .into_bytes(),
             1, // 1 yoctoNEAR
-            GAS_FT_TRANSFER,
+            GAS_ON_TRANSFER,
         );
 
         let callback = Promise::new(env::current_account_id()).function_call(
@@ -145,7 +161,7 @@ impl Escrow {
             .to_string()
             .into_bytes(),
             0,
-            GAS_FT_TRANSFER_CB,
+            GAS_ON_TRANSFER_CB,
         );
 
         promise.then(callback)
@@ -175,7 +191,7 @@ impl Escrow {
             .to_string()
             .into_bytes(),
             1, // 1 yoctoNEAR
-            GAS_FT_TRANSFER,
+            GAS_ON_TRANSFER,
         );
 
         let callback = Promise::new(env::current_account_id()).function_call(
@@ -186,7 +202,7 @@ impl Escrow {
             .to_string()
             .into_bytes(),
             0,
-            GAS_FT_TRANSFER_CB,
+            GAS_ON_TRANSFER_CB,
         );
 
         promise.then(callback)
@@ -233,7 +249,7 @@ impl Escrow {
             .to_string()
             .into_bytes(),
             1, // 1 yoctoNEAR
-            GAS_FT_TRANSFER,
+            GAS_ON_TRANSFER,
         )
     }
 }
