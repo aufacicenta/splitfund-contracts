@@ -17,7 +17,7 @@ pub mod ft_receiver;
 pub use ft_receiver::*;
 
 pub mod escrow;
-pub use escrow::*;
+pub use crate::escrow::*;
 
-// pub mod tests;
-// pub use tests::*;
+pub mod tests;
+pub use tests::*;

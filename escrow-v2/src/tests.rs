@@ -1,36 +1,110 @@
 #[cfg(test)]
 mod tests {
-    use crate::storage::Escrow;
     use chrono::Utc;
-    use near_sdk::json_types::U128;
-    use near_sdk::test_utils::test_env::{alice, bob, carol};
-    use near_sdk::test_utils::{accounts, VMContextBuilder};
-    use near_sdk::{testing_env, Balance, PromiseResult};
+    use near_sdk::{
+        json_types::U128,
+        test_utils::{
+            accounts,
+            test_env::{alice, bob},
+            VMContextBuilder,
+        },
+        testing_env,
+        AccountId, Balance,
+    };
+    use near_contract_standards::fungible_token::metadata::FungibleTokenMetadata;
+    use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
+    use near_contract_standards::fungible_token::core::FungibleTokenCore;
+    use near_contract_standards::storage_management::StorageManagement;
+    //use near_sdk::PromiseOrValue::Value;
+
+    use crate::storage::*;
 
     const ATTACHED_DEPOSIT: Balance = 1_000_000_000_000_000_000_000_000; // 1 Near
-    const MIN_FUNDING_AMOUNT: Balance = 15_000_000_000_000_000_000_000_000; // 15 Near
+    const MIN_FUNDING_AMOUNT: Balance = 1_000_000;
 
-    fn setup_context() -> VMContextBuilder {
-        let mut context = VMContextBuilder::new();
-        let now = Utc::now().timestamp_subsec_nanos();
-        testing_env!(context
-            .predecessor_account_id(alice())
-            .block_timestamp(now.try_into().unwrap())
-            .build());
+    fn get_context(predecessor_account_id: AccountId) -> VMContextBuilder {
+        let mut builder = VMContextBuilder::new();
+        builder
+            .current_account_id(accounts(0))
+            .signer_account_id(predecessor_account_id.clone())
+            .predecessor_account_id(predecessor_account_id);
+        builder
+    }
 
-        context
+    fn nep_141_account_id() -> AccountId {
+        AccountId::new_unchecked("nep141.near".to_string())
+    }
+
+    fn maintainer_account_id() -> AccountId {
+        AccountId::new_unchecked("maintainer.near".to_string())
+    }
+
+    fn fees_account_id() -> AccountId {
+        AccountId::new_unchecked("fees.near".to_string())
+    }
+
+    fn new_metadata (
+        expires_at: Timestamp,
+        funding_amount_limit: u128,
+        nep_141: Option<AccountId>,
+        maintainer: Option<AccountId>,
+    ) -> Metadata {
+        let nep_141 = nep_141.unwrap_or(nep_141_account_id());
+        let maintainer = maintainer.unwrap_or(maintainer_account_id());
+
+        Metadata {
+            expires_at,
+            funding_amount_limit,
+            unpaid_amount: 0,
+            nep_141,
+            maintainer_account_id: maintainer,
+            metadata_url: "".to_string(),
+        }
+    }
+
+    fn new_fees(
+        percentage: f32,
+        account_id: Option<AccountId>,
+    ) -> Fees {
+        let account_id = account_id.unwrap_or(fees_account_id());
+
+        Fees {
+            percentage,
+            amount: 0,
+            account_id,
+            claimed: false,
+        }
+    }
+
+    fn new_ft_metadata(name: String, decimals: u8) -> FungibleTokenMetadata {
+        FungibleTokenMetadata {
+            spec: "ft-1.0.0".to_string(),
+            name: name.clone(),
+            symbol: name.clone(),
+            icon: None,
+            reference: None,
+            reference_hash: None,
+            decimals,
+        }
     }
 
     fn setup_contract(expires_at: u64, funding_amount_limit: u128) -> Escrow {
-        let contract = Escrow::new(
-            expires_at,
-            U128(funding_amount_limit),
-            accounts(3),
-            accounts(4),
-            "metadata_url.json".to_string(),
-        );
+        let metadata = new_metadata(expires_at, funding_amount_limit, None, None);
+        let fees = new_fees(0.03, None);
+        let ft_metadata = new_ft_metadata("sa1".to_string(), 4);
 
+        let contract = Escrow::new(metadata, fees, ft_metadata, None);
         contract
+    }
+
+    fn register_account (contract: &mut Escrow, account: AccountId) {
+        let mut context = get_context(account.clone());
+
+        testing_env!(context
+            .attached_deposit(ATTACHED_DEPOSIT)
+            .build());
+
+        contract.ft.storage_deposit(Some(account), None);
     }
 
     fn add_expires_at_nanos(offset: u32) -> u64 {
@@ -38,671 +112,163 @@ mod tests {
         (now + offset).into()
     }
 
-    fn substract_expires_at_nanos(offset: u32) -> u64 {
-        let now = Utc::now().timestamp_subsec_nanos();
-        (now - offset).into()
+    #[test]
+    #[should_panic(expected = "Escrow Contract should be initialized before usage")]
+    fn default_state_err () {
+        Escrow::default();
     }
 
     #[test]
-    #[should_panic(expected = "ERR_INSUFFICIENT_FUNDS_LIMIT")]
-    fn test_new_fail() {
-        let mut context = setup_context();
-
-        testing_env!(context.signer_account_id(bob()).attached_deposit(0).build());
-
-        let expires_at = add_expires_at_nanos(100);
-
-        // Should fail because insufficient funds limit
-        Escrow::new(
-            expires_at,
-            U128(1_000_000_000_000_000_000_000_000), // 1 NEAR
-            accounts(3),
-            accounts(4),
-            "metadata_url.json".to_string(),
-        );
-    }
-
-    #[test]
-    fn test_get_deposits_of() {
-        let expires_at = add_expires_at_nanos(100);
-
-        let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        assert_eq!(
-            0,
-            contract.deposits_of(&alice()),
-            "Account deposits should be 0"
-        );
-    }
-
-    #[test]
-    fn test_get_shares_of() {
-        let mut context = setup_context();
-
-        testing_env!(context
-            .signer_account_id(bob())
-            .attached_deposit(ATTACHED_DEPOSIT)
-            .build());
+    #[should_panic(expected = "ERR_WRONG_NEP141")]
+    fn deposit_wrong_nep141_err () {
+        let context = get_context(accounts(1));
+        testing_env!(context.build());
 
         let expires_at = add_expires_at_nanos(100);
-
         let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        contract.deposit();
-
-        assert_eq!(
-            0,
-            contract.get_shares_of(&alice()),
-            "Account deposits should be 0"
-        );
-
-        assert_eq!(
-            ATTACHED_DEPOSIT * 1000 / contract.funding_amount_limit,
-            contract.get_shares_of(&bob()),
-            "Proportion deposit of Bob should be 8"
+        
+        contract.ft_on_transfer(
+            bob(),
+            U128(100_000),
+            "".to_string(),
         );
     }
 
     #[test]
-    fn test_get_deposits() {
-        let mut context = setup_context();
-
-        testing_env!(context
-            .signer_account_id(bob())
-            .attached_deposit(ATTACHED_DEPOSIT)
-            .build());
+    #[should_panic(expected = "ERR_ZERO_AMOUNT")]
+    fn deposit_zero_amount_err () {
+        let context = get_context(nep_141_account_id());
+        testing_env!(context.build());
 
         let expires_at = add_expires_at_nanos(100);
-
         let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        contract.deposit();
-
-        assert_eq!(
-            contract.get_deposits(),
-            vec![(bob(), ATTACHED_DEPOSIT)],
-            "Gets all deposits as vec"
+        
+        contract.ft_on_transfer(
+            bob(),
+            U128(0),
+            "".to_string(),
         );
     }
 
     #[test]
-    fn test_get_deposit_accounts() {
-        let mut context = setup_context();
-
-        testing_env!(context
-            .signer_account_id(bob())
-            .attached_deposit(ATTACHED_DEPOSIT)
-            .build());
+    #[should_panic(expected = "The account bob.near is not registered")]
+    fn deposit_not_register_err () {
+        let context = get_context(nep_141_account_id());
+        testing_env!(context.build());
 
         let expires_at = add_expires_at_nanos(100);
-
         let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        contract.deposit();
-
-        testing_env!(context
-            .signer_account_id(carol())
-            .attached_deposit(ATTACHED_DEPOSIT)
-            .build());
-
-        contract.deposit();
-
-        assert_eq!(
-            vec!["bob.near", "carol.near"],
-            contract.get_deposit_accounts(),
-        );
-    }
-
-    #[test]
-    fn test_get_dao_factory_account_id() {
-        let expires_at = add_expires_at_nanos(100);
-
-        let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        assert_eq!(
-            accounts(3),
-            contract.get_dao_factory_account_id(),
-            "Recipient account id should be 'danny.near'"
-        );
-    }
-
-    #[test]
-    fn test_get_ft_factory_account_id() {
-        let expires_at = add_expires_at_nanos(100);
-
-        let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        assert_eq!(
-            accounts(4),
-            contract.get_ft_factory_account_id(),
-            "Recipient account id should be 'eugene.near'"
-        );
-    }
-
-    #[test]
-    fn test_get_dao_name() {
-        let mut context = setup_context();
-
-        let expires_at = add_expires_at_nanos(100);
-
-        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        testing_env!(context
-            .signer_account_id(bob())
-            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
-            .build());
-
-        contract.deposit();
-
-        testing_env!(context
-            .signer_account_id(carol())
-            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
-            .build());
-
-        contract.deposit();
-
-        testing_env!(context
-            .block_timestamp((expires_at + 200).try_into().unwrap())
-            .build());
-
-        contract.delegate_funds("dao1".to_string());
-
-        testing_env!(
-            context.build(),
-            near_sdk::VMConfig::test(),
-            near_sdk::RuntimeFeesConfig::test(),
-            Default::default(),
-            vec![
-                PromiseResult::Successful("true".to_string().into_bytes()),
-                PromiseResult::Successful("true".to_string().into_bytes())
-            ],
-        );
-
-        assert_eq!(
-            contract.on_delegate_callback("dao1".to_string()),
-            true,
-            "delegate_funds should run successfully"
-        );
-
-        assert_eq!("dao1", contract.get_dao_name(), "Should equal DAO Name");
-    }
-
-    #[test]
-    fn test_get_metadata_url() {
-        let expires_at = add_expires_at_nanos(100);
-
-        let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        assert_eq!(
-            "metadata_url.json",
-            contract.get_metadata_url(),
-            "Contract was not initilialized with metadata_url param"
-        );
-    }
-
-    #[test]
-    fn test_get_0_total_funds() {
-        let expires_at = add_expires_at_nanos(100);
-
-        let contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
-    }
-
-    #[test]
-    fn test_get_correct_unpaid_amount() {
-        let mut context = setup_context();
-
-        testing_env!(context
-            .signer_account_id(bob())
-            .attached_deposit(ATTACHED_DEPOSIT)
-            .build());
-
-        let expires_at = add_expires_at_nanos(100);
-
-        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        contract.deposit();
-
-        assert_eq!(
-            MIN_FUNDING_AMOUNT - ATTACHED_DEPOSIT,
-            contract.get_unpaid_amount(),
-            "Unpaid funding amount is wrong"
-        );
-    }
-
-    #[test]
-    fn test_get_total_funds_after_deposits() {
-        let mut context = setup_context();
-
-        testing_env!(context
-            .signer_account_id(bob())
-            .attached_deposit(ATTACHED_DEPOSIT)
-            .build());
-
-        let expires_at = add_expires_at_nanos(100);
-
-        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        contract.deposit();
-
-        testing_env!(context
-            .signer_account_id(carol())
-            .attached_deposit(ATTACHED_DEPOSIT)
-            .build());
-
-        contract.deposit();
-
-        assert_eq!(
-            ATTACHED_DEPOSIT * 2,
-            contract.get_total_funds(),
-            "Total funds should be ATTACHED_DEPOSITx2"
-        );
-    }
-
-    #[test]
-    fn test_is_withdrawal_allowed() {
-        let mut context = setup_context();
-
-        let expires_at = add_expires_at_nanos(100);
-
-        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT * 2);
-
-        testing_env!(context
-            .signer_account_id(bob())
-            .attached_deposit(MIN_FUNDING_AMOUNT - 1_000)
-            .build());
-
-        contract.deposit();
-
-        testing_env!(context
-            .signer_account_id(carol())
-            .attached_deposit(MIN_FUNDING_AMOUNT - 1_000)
-            .build());
-
-        contract.deposit();
-
-        testing_env!(context
-            .signer_account_id(bob())
-            .block_timestamp((expires_at + 100).try_into().unwrap())
-            .build());
-
-        contract.withdraw();
-
-        testing_env!(context.signer_account_id(carol()).build());
-
-        contract.withdraw();
-
-        assert_eq!(
-            true,
-            contract.is_withdrawal_allowed(),
-            "Withdrawal should be allowed"
-        );
-
-        assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
-    }
-
-    #[test]
-    #[should_panic(expected = "ERR_DEPOSIT_SHOULD_NOT_BE_0")]
-    fn test_deposits() {
-        let mut context = setup_context();
-
-        testing_env!(context.signer_account_id(bob()).attached_deposit(0).build());
-
-        let expires_at = add_expires_at_nanos(100);
-
-        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        contract.deposit();
-    }
-
-    #[test]
-    #[should_panic(expected = "ERR_WITHDRAWAL_NOT_ALLOWED")]
-    fn test_is_withdrawal_not_allowed() {
-        setup_context();
-        let expires_at = add_expires_at_nanos(1_000_000);
-
-        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        contract.withdraw();
-
-        assert_eq!(
-            false,
-            contract.is_withdrawal_allowed(),
-            "Withdrawal should not be allowed"
+        
+        contract.ft_on_transfer(
+            bob(),
+            U128(100_000),
+            "".to_string(),
         );
     }
 
     #[test]
     #[should_panic(expected = "ERR_DEPOSIT_NOT_ALLOWED")]
-    fn test_is_deposit_not_allowed_by_expiration_date() {
-        let mut context = setup_context();
-
-        testing_env!(context
-            .signer_account_id(bob())
-            .attached_deposit(ATTACHED_DEPOSIT)
-            .build());
-
-        let expires_at = substract_expires_at_nanos(5_000_000);
-
-        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        contract.deposit();
-
-        assert_eq!(
-            false,
-            contract.is_deposit_allowed(),
-            "Deposit should not be allowed"
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "ERR_DEPOSIT_NOT_ALLOWED")]
-    fn test_is_deposit_not_allowed_by_total_funds_reached() {
-        let mut context = setup_context();
-
-        testing_env!(context
-            .signer_account_id(bob())
-            .attached_deposit(MIN_FUNDING_AMOUNT)
-            .build());
-
-        let expires_at = add_expires_at_nanos(1_000_000);
-
-        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        contract.deposit();
-
-        testing_env!(context
-            .signer_account_id(carol())
-            .attached_deposit(ATTACHED_DEPOSIT)
-            .build());
-
-        contract.deposit();
-
-        assert_eq!(
-            false,
-            contract.is_deposit_allowed(),
-            "Deposit should not be allowed"
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "ERR_OWNER_SHOULD_NOT_DEPOSIT")]
-    fn test_owner_deposit() {
-        let mut context = setup_context();
+    fn deposit_not_allowed_by_expiration_date() {
+        let context = get_context(nep_141_account_id());
+        testing_env!(context.build());
 
         let expires_at = add_expires_at_nanos(100);
-
         let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+        
+        register_account(&mut contract, bob());
 
+        let mut context = get_context(nep_141_account_id());
         testing_env!(context
-            .signer_account_id(alice())
-            .attached_deposit(ATTACHED_DEPOSIT)
+            .block_timestamp(expires_at + 1000)
             .build());
 
-        contract.deposit();
-    }
-
-    #[test]
-    #[should_panic(expected = "ERR_DELEGATE_NOT_ALLOWED")]
-    fn test_should_not_delegate_funds_if_active() {
-        let mut context = setup_context();
-
-        let expires_at = add_expires_at_nanos(100);
-
-        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        testing_env!(context
-            .signer_account_id(bob())
-            .attached_deposit(ATTACHED_DEPOSIT)
-            .build());
-
-        contract.deposit();
-
-        assert_eq!(
-            true,
-            contract.is_deposit_allowed(),
-            "Deposit should be allowed"
-        );
-
-        assert_eq!(
-            false,
-            contract.is_withdrawal_allowed(),
-            "Withdrawal should not be allowed"
-        );
-
-        contract.delegate_funds("dao1".to_string());
-    }
-
-    #[test]
-    #[should_panic(expected = "ERR_DELEGATE_NOT_ALLOWED")]
-    fn test_should_not_delegate_funds_if_expired() {
-        let mut context = setup_context();
-
-        let expires_at = add_expires_at_nanos(100);
-
-        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        testing_env!(context
-            .signer_account_id(bob())
-            .attached_deposit(MIN_FUNDING_AMOUNT - 1_000)
-            .build());
-
-        contract.deposit();
-
-        testing_env!(context
-            .block_timestamp((expires_at + 200).try_into().unwrap())
-            .build());
-
-        assert_eq!(
-            false,
-            contract.is_deposit_allowed(),
-            "Deposit should not be allowed"
-        );
-
-        assert_eq!(
-            true,
-            contract.is_withdrawal_allowed(),
-            "Withdrawal should be allowed"
-        );
-
-        contract.delegate_funds("dao1".to_string());
-    }
-
-    #[test]
-    #[should_panic(expected = "ERR_DELEGATE_NOT_ALLOWED")]
-    fn test_should_not_delegate_funds_if_already_delegated() {
-        let mut context = setup_context();
-
-        let expires_at = add_expires_at_nanos(100);
-
-        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        testing_env!(context
-            .signer_account_id(bob())
-            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
-            .build());
-
-        contract.deposit();
-
-        testing_env!(context
-            .signer_account_id(carol())
-            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
-            .build());
-
-        contract.deposit();
-
-        testing_env!(context
-            .block_timestamp((expires_at + 200).try_into().unwrap())
-            .build());
-
-        assert_eq!(
-            false,
-            contract.is_deposit_allowed(),
-            "Deposit should not be allowed"
-        );
-
-        assert_eq!(
-            false,
-            contract.is_withdrawal_allowed(),
-            "Withdrawal should not be allowed"
-        );
-
-        contract.delegate_funds("dao1".to_string());
-
-        testing_env!(
-            context.build(),
-            near_sdk::VMConfig::test(),
-            near_sdk::RuntimeFeesConfig::test(),
-            Default::default(),
-            vec![
-                PromiseResult::Successful("true".to_string().into_bytes()),
-                PromiseResult::Successful("true".to_string().into_bytes())
-            ],
-        );
-
-        assert_eq!(
-            contract.on_delegate_callback("dao1".to_string()),
-            true,
-            "delegate_funds should run successfully"
-        );
-
-        assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
-
-        contract.delegate_funds("dao1".to_string());
-    }
-
-    #[test]
-    #[should_panic(expected = "ERR_CREATE_DAO_UNSUCCESSFUL")]
-    fn test_should_not_delegate_funds_if_create_dao_fails() {
-        let mut context = setup_context();
-
-        let expires_at = add_expires_at_nanos(100);
-
-        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        testing_env!(context
-            .signer_account_id(bob())
-            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
-            .build());
-
-        contract.deposit();
-
-        testing_env!(context
-            .signer_account_id(carol())
-            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
-            .build());
-
-        contract.deposit();
-
-        testing_env!(context
-            .block_timestamp((expires_at + 200).try_into().unwrap())
-            .build());
-
-        assert_eq!(
-            false,
-            contract.is_deposit_allowed(),
-            "Deposit should not be allowed"
-        );
-
-        assert_eq!(
-            false,
-            contract.is_withdrawal_allowed(),
-            "Withdrawal should not be allowed"
-        );
-
-        contract.delegate_funds("dao1".to_string());
-
-        testing_env!(
-            context.build(),
-            near_sdk::VMConfig::test(),
-            near_sdk::RuntimeFeesConfig::test(),
-            Default::default(),
-            vec![PromiseResult::Failed, PromiseResult::Failed],
-        );
-
-        assert_eq!(
-            contract.on_delegate_callback("dao1".to_string()),
-            false,
-            "delegate_funds should fail"
-        );
-
-        assert_eq!(
-            MIN_FUNDING_AMOUNT,
-            contract.get_total_funds(),
-            "Total funds should be MIN_FUNDING_AMOUNT"
+        contract.ft_on_transfer(
+            bob(),
+            U128(100_000),
+            "".to_string(),
         );
     }
 
     #[test]
-    fn test_delegate_funds() {
-        let mut context = setup_context();
+    #[should_panic(expected = "ERR_AMOUNT_GT_UNPAID_AMOUNT")]
+    fn deposit_amount_gt_unpaid_amount() {
+        let context = get_context(nep_141_account_id());
+        testing_env!(context.build());
 
         let expires_at = add_expires_at_nanos(100);
-
         let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+        
+        // Bob Deposit
+        let bob_investment = 900_000;
 
-        testing_env!(context
-            .signer_account_id(bob())
-            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
-            .build());
+        register_account(&mut contract, bob());
 
-        contract.deposit();
+        let context = get_context(nep_141_account_id());
+        testing_env!(context.build());
 
-        testing_env!(context
-            .signer_account_id(carol())
-            .attached_deposit(MIN_FUNDING_AMOUNT / 2)
-            .build());
-
-        contract.deposit();
-
-        testing_env!(context
-            .block_timestamp((expires_at + 200).try_into().unwrap())
-            .build());
-
-        assert_eq!(
-            false,
-            contract.is_deposit_allowed(),
-            "Deposit should not be allowed"
+        contract.ft_on_transfer(
+            bob(),
+            U128(bob_investment),
+            "".to_string(),
         );
 
-        assert_eq!(
-            false,
-            contract.is_withdrawal_allowed(),
-            "Withdrawal should not be allowed"
+        // Bob Deposit x2
+        let context = get_context(nep_141_account_id());
+        testing_env!(context.build());
+
+        contract.ft_on_transfer(
+            bob(),
+            U128(bob_investment),
+            "".to_string(),
+        );
+    }
+
+    #[test]
+    fn deposit_success () {
+        let context = get_context(nep_141_account_id());
+        testing_env!(context.build());
+
+        let expires_at = add_expires_at_nanos(100);
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+        
+        // Bob Deposit
+        let bob_investment = 100_000;
+
+        register_account(&mut contract, bob());
+
+        let context = get_context(nep_141_account_id());
+        testing_env!(context.build());
+
+        contract.ft_on_transfer(
+            bob(),
+            U128(bob_investment),
+            "".to_string(),
         );
 
-        contract.delegate_funds("dao1".to_string());
+        // Alice Deposit
+        let alice_investment = 45_000;
 
-        testing_env!(
-            context.build(),
-            near_sdk::VMConfig::test(),
-            near_sdk::RuntimeFeesConfig::test(),
-            Default::default(),
-            vec![
-                PromiseResult::Successful("true".to_string().into_bytes()),
-                PromiseResult::Successful("true".to_string().into_bytes())
-            ],
+        register_account(&mut contract, alice());
+
+        let context = get_context(nep_141_account_id());
+        testing_env!(context.build());
+
+        contract.ft_on_transfer(
+            alice(),
+            U128(alice_investment),
+            "".to_string(),
         );
 
-        assert_eq!(
-            contract.on_delegate_callback("dao1".to_string()),
-            true,
-            "delegate_funds should run successfully"
-        );
+        // Check balances
 
-        assert_eq!(0, contract.get_total_funds(), "Total funds should be 0");
+        let amount_bob = contract.ft.ft_balance_of(bob());
+        let amount_alice = contract.ft.ft_balance_of(alice());
+        let fees = contract.get_fees();
 
         assert_eq!(
-            MIN_FUNDING_AMOUNT / 2,
-            contract.deposits_of(&bob()),
-            "Account deposits should be MIN_FUNDING_AMOUNT"
-        );
-
-        assert_eq!(
-            MIN_FUNDING_AMOUNT / 2,
-            contract.deposits_of(&carol()),
-            "Account deposits should be MIN_FUNDING_AMOUNT"
+            bob_investment + alice_investment,
+            amount_bob.0 + amount_alice.0 + fees.amount,
+            "Investment should be equal to amount + fees"
         );
     }
 }

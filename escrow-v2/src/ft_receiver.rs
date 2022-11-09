@@ -14,10 +14,6 @@ impl FungibleTokenReceiver for Escrow {
         amount: U128,
         msg: String,
     ) -> PromiseOrValue<U128> {
-        if !env::state_exists() {
-            env::panic_str("ERR_NOT_INITIALIZED");
-        }
-
         if env::predecessor_account_id() != self.get_metadata().nep_141 {
             env::panic_str("ERR_WRONG_NEP141");
         }

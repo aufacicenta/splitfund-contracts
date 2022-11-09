@@ -101,7 +101,7 @@ impl Escrow {
         }
 
         if amount > self.get_metadata().unpaid_amount {
-            env::panic_str("ERR_DEPOSIT_NOT_ALLOWED");
+            env::panic_str("ERR_AMOUNT_GT_UNPAID_AMOUNT");
         }
 
         // Fee Calculations
