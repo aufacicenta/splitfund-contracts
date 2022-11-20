@@ -20,8 +20,8 @@ use crate::storage::*;
 // Interface of this contract, for callbacks
 #[ext_contract(ext_self)]
 trait Callbacks {
-  fn on_withdraw_callback(&mut self, receiver_id: AccountId, amount: U128) -> Balance;
-  fn on_claim_fees_callback(&mut self, amount: U128) -> bool;
+    fn on_withdraw_callback(&mut self, receiver_id: AccountId, amount: U128) -> Balance;
+    fn on_claim_fees_callback(&mut self, amount: U128) -> bool;
 }
 
 impl Default for Escrow {
@@ -53,14 +53,13 @@ impl Escrow {
         deposits.insert(&metadata.maintainer_account_id);
 
         // Escrow Storage Deposit
-        let storage_deposit_amount = storage_deposit_amount.
-            unwrap_or(BALANCE_ON_STORAGE_DEPOSIT);
+        let storage_deposit_amount = storage_deposit_amount.unwrap_or(BALANCE_ON_STORAGE_DEPOSIT);
 
         Promise::new(metadata.nep_141.clone()).function_call(
             "storage_deposit".to_string(),
-            json!({})
-            .to_string()
-            .into_bytes(),
+            json!({ "account_id": env::current_account_id() })
+                .to_string()
+                .into_bytes(),
             storage_deposit_amount,
             GAS_ON_TRANSFER,
         );
@@ -146,7 +145,7 @@ impl Escrow {
 
         let receiver_id = env::signer_account_id();
         let amount = U128(self.ft.internal_unwrap_balance_of(&receiver_id));
-        
+
         // NEP141 Transfer
         let promise = ext_ft_core::ext(self.get_metadata().nep_141.clone())
             .with_attached_deposit(1)
@@ -205,7 +204,7 @@ impl Escrow {
 
         let fees_amount = self.get_fees().amount;
         let receiver_id = self.get_metadata().maintainer_account_id.clone();
-        
+
         // If amount is None then use the funding_amount_limit
         let amount = amount.unwrap_or(U128(self.get_metadata().funding_amount_limit));
 

@@ -1,6 +1,10 @@
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
+    use near_contract_standards::fungible_token::core::FungibleTokenCore;
+    use near_contract_standards::fungible_token::metadata::FungibleTokenMetadata;
+    use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
+    use near_contract_standards::storage_management::StorageManagement;
     use near_sdk::{
         json_types::U128,
         test_utils::{
@@ -8,13 +12,8 @@ mod tests {
             test_env::{alice, bob},
             VMContextBuilder,
         },
-        testing_env,
-        AccountId, Balance,
+        testing_env, AccountId, Balance,
     };
-    use near_contract_standards::fungible_token::metadata::FungibleTokenMetadata;
-    use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
-    use near_contract_standards::fungible_token::core::FungibleTokenCore;
-    use near_contract_standards::storage_management::StorageManagement;
     //use near_sdk::PromiseOrValue::Value;
 
     use crate::storage::*;
@@ -43,7 +42,7 @@ mod tests {
         AccountId::new_unchecked("fees.near".to_string())
     }
 
-    fn new_metadata (
+    fn new_metadata(
         expires_at: Timestamp,
         funding_amount_limit: u128,
         nep_141: Option<AccountId>,
@@ -62,10 +61,7 @@ mod tests {
         }
     }
 
-    fn new_fees(
-        percentage: f32,
-        account_id: Option<AccountId>,
-    ) -> Fees {
+    fn new_fees(percentage: f32, account_id: Option<AccountId>) -> Fees {
         let account_id = account_id.unwrap_or(fees_account_id());
 
         Fees {
@@ -97,12 +93,10 @@ mod tests {
         contract
     }
 
-    fn register_account (contract: &mut Escrow, account: AccountId) {
+    fn register_account(contract: &mut Escrow, account: AccountId) {
         let mut context = get_context(account.clone());
 
-        testing_env!(context
-            .attached_deposit(ATTACHED_DEPOSIT)
-            .build());
+        testing_env!(context.attached_deposit(ATTACHED_DEPOSIT).build());
 
         contract.ft.storage_deposit(Some(account), None);
     }
@@ -114,56 +108,44 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Escrow Contract should be initialized before usage")]
-    fn default_state_err () {
+    fn default_state_err() {
         Escrow::default();
     }
 
     #[test]
     #[should_panic(expected = "ERR_WRONG_NEP141")]
-    fn deposit_wrong_nep141_err () {
+    fn deposit_wrong_nep141_err() {
         let context = get_context(accounts(1));
         testing_env!(context.build());
 
         let expires_at = add_expires_at_nanos(100);
         let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-        
-        contract.ft_on_transfer(
-            bob(),
-            U128(100_000),
-            "".to_string(),
-        );
+
+        contract.ft_on_transfer(bob(), U128(100_000), "".to_string());
     }
 
     #[test]
     #[should_panic(expected = "ERR_ZERO_AMOUNT")]
-    fn deposit_zero_amount_err () {
+    fn deposit_zero_amount_err() {
         let context = get_context(nep_141_account_id());
         testing_env!(context.build());
 
         let expires_at = add_expires_at_nanos(100);
         let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-        
-        contract.ft_on_transfer(
-            bob(),
-            U128(0),
-            "".to_string(),
-        );
+
+        contract.ft_on_transfer(bob(), U128(0), "".to_string());
     }
 
     #[test]
     #[should_panic(expected = "The account bob.near is not registered")]
-    fn deposit_not_register_err () {
+    fn deposit_not_register_err() {
         let context = get_context(nep_141_account_id());
         testing_env!(context.build());
 
         let expires_at = add_expires_at_nanos(100);
         let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-        
-        contract.ft_on_transfer(
-            bob(),
-            U128(100_000),
-            "".to_string(),
-        );
+
+        contract.ft_on_transfer(bob(), U128(100_000), "".to_string());
     }
 
     #[test]
@@ -174,19 +156,13 @@ mod tests {
 
         let expires_at = add_expires_at_nanos(100);
         let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-        
+
         register_account(&mut contract, bob());
 
         let mut context = get_context(nep_141_account_id());
-        testing_env!(context
-            .block_timestamp(expires_at + 1000)
-            .build());
+        testing_env!(context.block_timestamp(expires_at + 1000).build());
 
-        contract.ft_on_transfer(
-            bob(),
-            U128(100_000),
-            "".to_string(),
-        );
+        contract.ft_on_transfer(bob(), U128(100_000), "".to_string());
     }
 
     #[test]
@@ -197,7 +173,7 @@ mod tests {
 
         let expires_at = add_expires_at_nanos(100);
         let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-        
+
         // Bob Deposit
         let bob_investment = 900_000;
 
@@ -206,31 +182,23 @@ mod tests {
         let context = get_context(nep_141_account_id());
         testing_env!(context.build());
 
-        contract.ft_on_transfer(
-            bob(),
-            U128(bob_investment),
-            "".to_string(),
-        );
+        contract.ft_on_transfer(bob(), U128(bob_investment), "".to_string());
 
         // Bob Deposit x2
         let context = get_context(nep_141_account_id());
         testing_env!(context.build());
 
-        contract.ft_on_transfer(
-            bob(),
-            U128(bob_investment),
-            "".to_string(),
-        );
+        contract.ft_on_transfer(bob(), U128(bob_investment), "".to_string());
     }
 
     #[test]
-    fn deposit_success () {
+    fn deposit_success() {
         let context = get_context(nep_141_account_id());
         testing_env!(context.build());
 
         let expires_at = add_expires_at_nanos(100);
         let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-        
+
         // Bob Deposit
         let bob_investment = 100_000;
 
@@ -239,11 +207,7 @@ mod tests {
         let context = get_context(nep_141_account_id());
         testing_env!(context.build());
 
-        contract.ft_on_transfer(
-            bob(),
-            U128(bob_investment),
-            "".to_string(),
-        );
+        contract.ft_on_transfer(bob(), U128(bob_investment), "".to_string());
 
         // Alice Deposit
         let alice_investment = 45_000;
@@ -253,11 +217,7 @@ mod tests {
         let context = get_context(nep_141_account_id());
         testing_env!(context.build());
 
-        contract.ft_on_transfer(
-            alice(),
-            U128(alice_investment),
-            "".to_string(),
-        );
+        contract.ft_on_transfer(alice(), U128(alice_investment), "".to_string());
 
         // Check balances
 
