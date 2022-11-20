@@ -5,6 +5,7 @@ mod tests {
     use near_contract_standards::fungible_token::metadata::FungibleTokenMetadata;
     use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
     use near_contract_standards::storage_management::StorageManagement;
+    use near_sdk::PromiseResult;
     use near_sdk::{
         json_types::U128,
         test_utils::{
@@ -111,6 +112,9 @@ mod tests {
     fn default_state_err() {
         Escrow::default();
     }
+
+    //################
+    // Test On Deposit
 
     #[test]
     #[should_panic(expected = "ERR_WRONG_NEP141")]
@@ -230,5 +234,83 @@ mod tests {
             amount_bob.0 + amount_alice.0 + fees.amount,
             "Investment should be equal to amount + fees"
         );
+    }
+
+    //#################
+    // Test On Withdraw
+
+    #[test]
+    #[should_panic(expected = "Requires attached deposit of exactly 1 yoctoNEAR")]
+    fn withdraw_1yocto_error() {
+        let context = get_context(nep_141_account_id());
+        testing_env!(context.build());
+
+        let expires_at = add_expires_at_nanos(100);
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        contract.withdraw();
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_WITHDRAWAL_NOT_ALLOWED")]
+    fn withdraw_not_allowed_error() {
+        let context = get_context(nep_141_account_id());
+        testing_env!(context.build());
+
+        let expires_at = add_expires_at_nanos(100);
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        let mut context = get_context(bob());
+
+        testing_env!(context.attached_deposit(1).build());
+
+        contract.withdraw();
+    }
+
+    #[test]
+    fn withdraw_success() {
+        let context = get_context(nep_141_account_id());
+        testing_env!(context.build());
+
+        let expires_at = add_expires_at_nanos(100);
+        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
+
+        // Bob Deposit
+        let bob_investment = 100_000;
+
+        register_account(&mut contract, bob());
+
+        let context = get_context(nep_141_account_id());
+        testing_env!(context.build());
+
+        contract.ft_on_transfer(bob(), U128(bob_investment), "".to_string());
+
+        let amount_bob = contract.ft.ft_balance_of(bob());
+
+        assert_eq!((bob_investment as f32 * 0.97) as u128, amount_bob.0);
+
+        // Bob Withdraw
+        register_account(&mut contract, bob());
+
+        let mut context = get_context(bob());
+
+        testing_env!(context
+            .block_timestamp(expires_at + 1000)
+            .attached_deposit(1)
+            .build());
+
+        contract.withdraw();
+
+        testing_env!(
+            context.build(),
+            near_sdk::VMConfig::test(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Successful(vec![])],
+        );
+
+        contract.on_withdraw_callback(bob(), amount_bob);
+
+        assert_eq!(0, contract.ft.ft_balance_of(bob()).0);
     }
 }
