@@ -115,6 +115,13 @@ impl Escrow {
             .unwrap_or_else(|| env::panic_str("ERR_AMOUNT_MINUS_FEE_OVERFLOW"));
 
         // Register transfer
+        match self.ft.accounts.get(&sender_id) {
+            None => {
+                self.ft.internal_register_account(&sender_id);
+            }
+            Some(_acccount) => {}
+        }
+
         self.ft.internal_deposit(&sender_id, amount_minus_fee);
         self.deposits.insert(&sender_id);
         self.metadata.unpaid_amount = self

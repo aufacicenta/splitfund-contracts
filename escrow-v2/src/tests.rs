@@ -141,18 +141,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "The account bob.near is not registered")]
-    fn deposit_not_register_err() {
-        let context = get_context(nep_141_account_id());
-        testing_env!(context.build());
-
-        let expires_at = add_expires_at_nanos(100);
-        let mut contract = setup_contract(expires_at, MIN_FUNDING_AMOUNT);
-
-        contract.ft_on_transfer(bob(), U128(100_000), "".to_string());
-    }
-
-    #[test]
     #[should_panic(expected = "ERR_DEPOSIT_NOT_ALLOWED")]
     fn deposit_not_allowed_by_expiration_date() {
         let context = get_context(nep_141_account_id());
