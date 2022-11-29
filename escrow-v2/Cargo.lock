@@ -339,16 +339,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "escrow"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "near-contract-standards",
- "near-sdk",
- "serde",
-]
-
-[[package]]
 name = "fixed-hash"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1013,6 +1003,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "splitfund"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "near-contract-standards",
+ "near-sdk",
+ "serde",
 ]
 
 [[package]]

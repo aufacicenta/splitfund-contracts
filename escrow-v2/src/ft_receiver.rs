@@ -4,7 +4,7 @@ use near_sdk::{env, json_types::U128, near_bindgen, AccountId, PromiseOrValue};
 use crate::*;
 
 #[near_bindgen]
-impl FungibleTokenReceiver for Escrow {
+impl FungibleTokenReceiver for Splitfund {
     // `msg` doesn't affect the implementation for ft_on_transfer.
     #[allow(unused_variables)]
     #[payable]

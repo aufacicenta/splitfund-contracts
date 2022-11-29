@@ -3,7 +3,7 @@ use near_sdk::{env, near_bindgen, Balance};
 use crate::storage::*;
 
 #[near_bindgen]
-impl Escrow {
+impl Splitfund {
     pub fn get_total_funds(&self) -> Balance {
         self.get_metadata().funding_amount_limit - self.get_metadata().unpaid_amount
     }

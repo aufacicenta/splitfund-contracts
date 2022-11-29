@@ -8,7 +8,7 @@ use near_contract_standards::storage_management::{
 use crate::*;
 
 #[near_bindgen]
-impl StorageManagement for Escrow {
+impl StorageManagement for Splitfund {
     #[allow(unused_variables)]
     #[payable]
     fn storage_deposit(

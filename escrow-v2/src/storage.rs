@@ -11,7 +11,7 @@ pub type Timestamp = u64;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
-pub struct Escrow {
+pub struct Splitfund {
     pub deposits: UnorderedSet<AccountId>,
     pub ft: FungibleToken,
     pub ft_metadata: LazyOption<FungibleTokenMetadata>,

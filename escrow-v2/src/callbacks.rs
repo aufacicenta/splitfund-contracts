@@ -3,7 +3,7 @@ use near_sdk::{env, json_types::U128, log, near_bindgen, AccountId, Balance, Pro
 use crate::storage::*;
 
 #[near_bindgen]
-impl Escrow {
+impl Splitfund {
     #[private]
     pub fn on_withdraw_callback(&mut self, receiver_id: AccountId, amount: U128) -> Balance {
         match env::promise_result(0) {

@@ -24,14 +24,14 @@ trait Callbacks {
     fn on_claim_fees_callback(&mut self, amount: U128) -> bool;
 }
 
-impl Default for Escrow {
+impl Default for Splitfund {
     fn default() -> Self {
-        env::panic_str("Escrow Contract should be initialized before usage")
+        env::panic_str("Splitfund Contract should be initialized before usage")
     }
 }
 
 #[near_bindgen]
-impl Escrow {
+impl Splitfund {
     #[init]
     pub fn new(
         metadata: Metadata,
@@ -52,7 +52,7 @@ impl Escrow {
         let mut deposits = UnorderedSet::new(StorageKeys::Deposits);
         deposits.insert(&metadata.maintainer_account_id);
 
-        // Escrow Storage Deposit
+        // Splitfund Storage Deposit
         let storage_deposit_amount = storage_deposit_amount.unwrap_or(BALANCE_ON_STORAGE_DEPOSIT);
 
         Promise::new(metadata.nep_141.clone()).function_call(
@@ -88,7 +88,7 @@ impl Escrow {
     }
 
     /**
-     * Only if total funds are reached or escrow has not expired
+     * Only if total funds are reached or Splitfund has not expired
      * Called on ft_transfer_callback only
      * Total sender balances must match the contract NEP141 balance, minus fees
      * Transfer self NEP141 of the stable NEP141 amount as a receipt
@@ -139,7 +139,7 @@ impl Escrow {
     }
 
     /**
-     * Only if total funds are not reached or escrow has expired
+     * Only if total funds are not reached or Splitfund has expired
      * Transfer all funds to receiver_id
      */
     #[payable]
@@ -235,7 +235,7 @@ impl Escrow {
     }
 }
 
-impl Escrow {
+impl Splitfund {
     fn measure_account_storage_usage(&mut self) {
         let initial_storage_usage = env::storage_usage();
         let tmp_account_id = AccountId::new_unchecked("a".repeat(64));
@@ -247,10 +247,10 @@ impl Escrow {
     }
 }
 
-near_contract_standards::impl_fungible_token_core!(Escrow, ft);
+near_contract_standards::impl_fungible_token_core!(Splitfund, ft);
 
 #[near_bindgen]
-impl FungibleTokenMetadataProvider for Escrow {
+impl FungibleTokenMetadataProvider for Splitfund {
     fn ft_metadata(&self) -> FungibleTokenMetadata {
         self.ft_metadata.get().unwrap()
     }

@@ -1,3 +1,3 @@
 #!/bin/bash
 RUSTFLAGS='-C link-arg=-s' cargo build --target wasm32-unknown-unknown --release
-cp ./target/wasm32-unknown-unknown/release/escrow.wasm res/
+cp ./target/wasm32-unknown-unknown/release/splitfund.wasm res/

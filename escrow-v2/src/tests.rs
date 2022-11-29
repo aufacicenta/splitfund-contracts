@@ -85,16 +85,16 @@ mod tests {
         }
     }
 
-    fn setup_contract(expires_at: u64, funding_amount_limit: u128) -> Escrow {
+    fn setup_contract(expires_at: u64, funding_amount_limit: u128) -> Splitfund {
         let metadata = new_metadata(expires_at, funding_amount_limit, None, None);
         let fees = new_fees(0.03, None);
         let ft_metadata = new_ft_metadata("sa1".to_string(), 4);
 
-        let contract = Escrow::new(metadata, fees, ft_metadata, None);
+        let contract = Splitfund::new(metadata, fees, ft_metadata, None);
         contract
     }
 
-    fn register_account(contract: &mut Escrow, account: AccountId) {
+    fn register_account(contract: &mut Splitfund, account: AccountId) {
         let mut context = get_context(account.clone());
 
         testing_env!(context.attached_deposit(ATTACHED_DEPOSIT).build());
@@ -108,9 +108,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Escrow Contract should be initialized before usage")]
+    #[should_panic(expected = "Splitfund Contract should be initialized before usage")]
     fn default_state_err() {
-        Escrow::default();
+        Splitfund::default();
     }
 
     //################
